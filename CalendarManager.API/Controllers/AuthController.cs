@@ -12,11 +12,13 @@ public class AuthController : ControllerBase
 {
     private readonly IOAuthService _oauthService;
     private readonly AppDbContext _context;
+    private readonly IConfiguration _configuration;
 
-    public AuthController(IOAuthService oauthService, AppDbContext context)
+    public AuthController(IOAuthService oauthService, AppDbContext context, IConfiguration configuration)
     {
         _oauthService = oauthService;
         _context = context;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -75,17 +77,23 @@ public class AuthController : ControllerBase
             // Exchange authorization code for tokens
             var tokens = await _oauthService.ExchangeCodeForTokensAsync(code, state, user.Id);
 
-            return Ok(new 
-            { 
-                success = true,
-                message = "Successfully authenticated with Google",
-                user = new { user.Id, user.Email, user.DisplayName },
-                tokenExpiry = tokens.ExpiresAt
-            });
+            // Redirect to frontend with success message
+            var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") 
+                ?? _configuration["Frontend:Url"] 
+                ?? "http://localhost:4201";
+            var redirectUrl = $"{frontendUrl}?auth=success&user={Uri.EscapeDataString(user.Email)}";
+            
+            return Redirect(redirectUrl);
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = "OAuth callback failed", details = ex.Message });
+            // Redirect to frontend with error message
+            var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") 
+                ?? _configuration["Frontend:Url"] 
+                ?? "http://localhost:4201";
+            var redirectUrl = $"{frontendUrl}?auth=error&message={Uri.EscapeDataString(ex.Message)}";
+            
+            return Redirect(redirectUrl);
         }
     }
 

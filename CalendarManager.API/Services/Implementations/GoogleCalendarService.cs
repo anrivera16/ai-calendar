@@ -18,7 +18,7 @@ public class GoogleCalendarService : IGoogleCalendarService
         _oauthService = oauthService;
     }
 
-    public async Task<List<CalendarEventDto>> GetEventsAsync(Guid userId, DateTime start, DateTime end)
+    public Task<List<CalendarEventDto>> GetEventsAsync(Guid userId, DateTime start, DateTime end)
     {
         // TODO: Get calendar events from Google Calendar API
         // 1. Get valid access token for user
@@ -36,7 +36,7 @@ public class GoogleCalendarService : IGoogleCalendarService
         throw new NotImplementedException("TODO: Get calendar events");
     }
 
-    public async Task<CalendarEventDto> CreateEventAsync(Guid userId, CreateEventDto request)
+    public Task<CalendarEventDto> CreateEventAsync(Guid userId, CreateEventDto request)
     {
         // TODO: Create new calendar event
         // 1. Get valid access token
@@ -57,7 +57,7 @@ public class GoogleCalendarService : IGoogleCalendarService
         throw new NotImplementedException("TODO: Create calendar event");
     }
 
-    public async Task<CalendarEventDto> UpdateEventAsync(Guid userId, string eventId, UpdateEventDto request)
+    public Task<CalendarEventDto> UpdateEventAsync(Guid userId, string eventId, UpdateEventDto request)
     {
         // TODO: Update existing calendar event
         // 1. Get valid access token
@@ -70,7 +70,7 @@ public class GoogleCalendarService : IGoogleCalendarService
         throw new NotImplementedException("TODO: Update calendar event");
     }
 
-    public async Task DeleteEventAsync(Guid userId, string eventId)
+    public Task DeleteEventAsync(Guid userId, string eventId)
     {
         // TODO: Delete calendar event
         // 1. Get valid access token
@@ -81,7 +81,7 @@ public class GoogleCalendarService : IGoogleCalendarService
         throw new NotImplementedException("TODO: Delete calendar event");
     }
 
-    public async Task<FreeBusyDto> GetFreeBusyAsync(Guid userId, string email, DateTime start, DateTime end)
+    public Task<FreeBusyDto> GetFreeBusyAsync(Guid userId, string email, DateTime start, DateTime end)
     {
         // TODO: Get free/busy information
         // 1. Get valid access token
@@ -95,7 +95,7 @@ public class GoogleCalendarService : IGoogleCalendarService
         throw new NotImplementedException("TODO: Get free/busy info");
     }
 
-    public async Task<bool> ValidateTokenAsync(Guid userId)
+    public Task<bool> ValidateTokenAsync(Guid userId)
     {
         // TODO: Validate access token
         // 1. Try a simple API call (like getting calendar list)
@@ -108,7 +108,7 @@ public class GoogleCalendarService : IGoogleCalendarService
 
     // HELPER METHODS TO IMPLEMENT:
 
-    private async Task<HttpRequestMessage> CreateAuthorizedRequestAsync(Guid userId, HttpMethod method, string url)
+    private Task<HttpRequestMessage> CreateAuthorizedRequestAsync(Guid userId, HttpMethod method, string url)
     {
         // TODO: Create HTTP request with authorization
         // 1. Get access token

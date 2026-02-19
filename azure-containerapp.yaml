@@ -1,0 +1,41 @@
+apiVersion: 2022-10-01
+location: East US
+name: ai-calendar-api
+properties:
+  environmentId: /subscriptions/{subscription-id}/resourceGroups/{resource-group}/providers/Microsoft.App/managedEnvironments/{environment-name}
+  configuration:
+    ingress:
+      external: true
+      targetPort: 8080
+      transport: http
+      allowInsecure: false
+    secrets:
+      - name: google-client-secret
+        value: ""
+      - name: encryption-key
+        value: ""
+      - name: database-url
+        value: ""
+  template:
+    containers:
+      - image: {your-registry}.azurecr.io/ai-calendar-api:latest
+        name: ai-calendar-api
+        env:
+          - name: GOOGLE_CLIENT_ID
+            value: ""
+          - name: GOOGLE_CLIENT_SECRET
+            secretRef: google-client-secret
+          - name: ENCRYPTION_KEY
+            secretRef: encryption-key
+          - name: DATABASE_URL
+            secretRef: database-url
+          - name: GOOGLE_REDIRECT_URI
+            value: "https://{your-app-name}.azurecontainerapps.io/api/auth/callback"
+          - name: FRONTEND_URL
+            value: "https://{your-frontend-domain}"
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
+    scale:
+      minReplicas: 1
+      maxReplicas: 3

@@ -22,6 +22,34 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build: 
+      context: ./CalendarManager.API
+      dockerfile: Dockerfile
+    container_name: ai-calendar-api
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-yourpassword}@postgres:5432/${POSTGRES_DB:-ai_calendar_manager}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:8080/api/auth/callback}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - ASPNETCORE_ENVIRONMENT=Production
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ai-calendar-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   # Optional: pgAdmin for database management
   pgadmin:
     image: dpage/pgadmin4:latest
@@ -39,6 +67,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    profiles:
+      - dev
 
 volumes:
   postgres_data:

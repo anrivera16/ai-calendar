@@ -17,8 +17,9 @@ public class OAuthService : IOAuthService
     private readonly ITokenEncryptionService _encryptionService;
     private readonly HttpClient _httpClient;
     
-    // In-memory storage for PKCE code verifiers (use Redis in production)
-    private readonly ConcurrentDictionary<string, string> _codeVerifiers = new();
+    // In-memory storage for PKCE code verifiers with expiration (use Redis in production)
+    // Made static so it persists across HTTP requests
+    private static readonly ConcurrentDictionary<string, (string CodeVerifier, DateTime ExpiresAt)> _codeVerifiers = new();
 
     public OAuthService(
         IConfiguration configuration,
@@ -304,22 +305,45 @@ public class OAuthService : IOAuthService
 
     public void StoreCodeVerifier(string state, string codeVerifier)
     {
-        // TODO: Store PKCE code verifier temporarily
-        // 1. Add to in-memory dictionary with expiration
-        // 2. In production, use Redis with TTL (5-10 minutes)
+        // Store PKCE code verifier temporarily with expiration (10 minutes)
+        // In production, use Redis with TTL (5-10 minutes)
         
-        _codeVerifiers[state] = codeVerifier;
+        var expiresAt = DateTime.UtcNow.AddMinutes(10);
+        _codeVerifiers[state] = (codeVerifier, expiresAt);
+        
+        Console.WriteLine($"[DEBUG] Stored code verifier for state: {state}, expires at: {expiresAt}");
+        Console.WriteLine($"[DEBUG] Total verifiers in memory: {_codeVerifiers.Count}");
     }
 
     public string? RetrieveCodeVerifier(string state)
     {
-        // TODO: Retrieve and remove PKCE code verifier
-        // 1. Try to get verifier from storage
-        // 2. Remove it after retrieval (one-time use)
-        // 3. Return null if not found
+        // Retrieve and remove PKCE code verifier (one-time use)
+        // Check expiration to prevent stale verifiers
         
-        _codeVerifiers.TryRemove(state, out var verifier);
-        return verifier;
+        Console.WriteLine($"[DEBUG] Attempting to retrieve code verifier for state: {state}");
+        Console.WriteLine($"[DEBUG] Current verifiers in memory: {_codeVerifiers.Count}");
+        
+        if (_codeVerifiers.TryRemove(state, out var verifierData))
+        {
+            Console.WriteLine($"[DEBUG] Found verifier, checking expiration. Expires at: {verifierData.ExpiresAt}, Current time: {DateTime.UtcNow}");
+            
+            // Check if expired
+            if (verifierData.ExpiresAt > DateTime.UtcNow)
+            {
+                Console.WriteLine($"[DEBUG] Code verifier is valid, returning it");
+                return verifierData.CodeVerifier;
+            }
+            else
+            {
+                Console.WriteLine($"[DEBUG] Code verifier has expired");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"[DEBUG] No code verifier found for state: {state}");
+        }
+        
+        return null;
     }
 
     // HELPER METHODS TO IMPLEMENT:
