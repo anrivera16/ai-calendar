@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { catchError, timeout } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 import { 
   AuthStatus, 
@@ -46,7 +46,10 @@ export class ApiService {
       message,
       userEmail: userEmail || 'test@example.com',
       conversationId
-    }).pipe(catchError(this.handleError));
+    }).pipe(
+      timeout(30000), // 30 second timeout
+      catchError(this.handleError)
+    );
   }
 
   getChatConversation(conversationId: string): Observable<any> {

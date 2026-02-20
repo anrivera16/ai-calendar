@@ -181,6 +181,23 @@ public class ClaudeService : IClaudeService
                 ex.Message.Contains("payment") || ex.Message.Contains("invalid_request_error"))
             {
                 _logger.LogWarning("Claude API unavailable due to billing/credits. Using intelligent fallback.");
+                
+                var showCreditMessage = _configuration.GetValue<bool>("Claude:ShowCreditMessage", true);
+                if (showCreditMessage)
+                {
+                    return $"💰 **Claude AI Credits Needed**\n\n" +
+                           $"I'm your AI Calendar Assistant! My advanced Claude features need API credits, but I can still provide intelligent help.\n\n" +
+                           $"**🤖 Current Capabilities:**\n" +
+                           $"• Smart calendar conversation\n" +
+                           $"• Scheduling guidance and examples\n" +
+                           $"• Time management advice\n" +
+                           $"• Natural language understanding\n\n" +
+                           $"**🚀 Your request**: \"{userMessage}\"\n\n" +
+                           $"Let me help with that:\n\n" +
+                           ProcessIntelligentFallback(userMessage) +
+                           $"\n\n*💡 Add Claude API credits for advanced AI features like direct calendar creation!*";
+                }
+                
                 return ProcessIntelligentFallback(userMessage);
             }
             

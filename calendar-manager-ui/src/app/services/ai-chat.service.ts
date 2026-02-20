@@ -50,14 +50,31 @@ export class AiChatService {
     this.addMessage(userMessage);
     this.processingSubject.next(true);
 
+    // Add a safety timeout to prevent infinite loading
+    const safetyTimeout = setTimeout(() => {
+      if (this.processingSubject.value) {
+        this.processingSubject.next(false);
+        const timeoutMessage: ChatMessage = {
+          id: Date.now().toString(),
+          text: `⏱️ **Request timed out**\n\nThe AI service is taking longer than expected. Please try your request again.`,
+          isUser: false,
+          timestamp: new Date(),
+          type: 'warning'
+        };
+        this.addMessage(timeoutMessage);
+      }
+    }, 35000); // 35 second safety timeout
+
     // Call Claude backend
     this.apiService.processChatMessage(message, 'test@example.com', this.conversationId)
       .subscribe({
         next: (response) => {
+          clearTimeout(safetyTimeout);
           this.handleBackendResponse(response);
           this.processingSubject.next(false);
         },
         error: (error) => {
+          clearTimeout(safetyTimeout);
           this.handleError(error);
           this.processingSubject.next(false);
         }
@@ -97,9 +114,22 @@ export class AiChatService {
   private handleError(error: any): void {
     console.error('Chat API error:', error);
     
+    let errorText = '';
+    
+    // Check for specific error types
+    if (error.name === 'TimeoutError') {
+      errorText = `⏱️ **Request timed out**\n\nThe AI service is taking longer than expected. This might be due to:\n• High API usage\n• Network connectivity issues\n• Service maintenance\n\nPlease try again in a moment.`;
+    } else if (error.status === 500) {
+      errorText = `🛠️ **Service temporarily unavailable**\n\nOur AI assistant is experiencing technical difficulties. We're working to resolve this quickly.\n\nYou can still:\n• View your calendar events using the dashboard\n• Access Google Calendar directly\n• Try again in a few minutes`;
+    } else if (error.message?.includes('credit') || error.message?.includes('billing')) {
+      errorText = `💰 **AI Credits Required**\n\nOur Claude AI assistant needs credits to provide advanced responses.\n\n**In the meantime, I can still help with:**\n• Basic calendar guidance\n• Scheduling advice\n• Time management tips\n\nFor full AI features, please add credits to your Claude API account.`;
+    } else {
+      errorText = `❌ **Connection Issue**\n\nI'm having trouble connecting to the AI service right now.\n\n**You can:**\n• Try refreshing the page\n• Check your internet connection\n• Use the dashboard for calendar operations\n• Try again in a few moments\n\n*Error: ${error.message || 'Network error'}*`;
+    }
+    
     const errorMessage: ChatMessage = {
       id: Date.now().toString(),
-      text: `❌ Sorry, I encountered an error: ${error.message || 'Please try again.'}`,
+      text: errorText,
       isUser: false,
       timestamp: new Date(),
       type: 'error'
