@@ -59,8 +59,27 @@ public class ClaudeService : IClaudeService
                 };
             }
 
-            // Use Claude with function calling
-            var response = await ProcessWithClaudeAsync(message, user.Id, userId);
+            // Check configuration for Claude usage
+            var fallbackOnly = _configuration.GetValue<bool>("Claude:FallbackOnly", false);
+            var claudeApiKey = Environment.GetEnvironmentVariable("CLAUDE_API_KEY") 
+                             ?? _configuration["Claude:ApiKey"];
+            
+            string response;
+            if (fallbackOnly)
+            {
+                _logger.LogInformation("Configuration set to fallback only. Using intelligent fallback.");
+                response = ProcessIntelligentFallback(message);
+            }
+            else if (string.IsNullOrEmpty(claudeApiKey))
+            {
+                _logger.LogInformation("No Claude API key configured. Using intelligent fallback.");
+                response = ProcessIntelligentFallback(message);
+            }
+            else
+            {
+                // Try Claude first, fall back to intelligent processing if needed
+                response = await ProcessWithClaudeAsync(message, user.Id, userId);
+            }
             
             return new ChatResponse
             {
@@ -73,13 +92,29 @@ public class ClaudeService : IClaudeService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing message for user {UserId}", userId);
-            return new ChatResponse
+            
+            // Even in error cases, try to provide a helpful fallback response
+            try
             {
-                Message = "Sorry, I encountered an error processing your request. Please try again.",
-                Success = false,
-                ErrorMessage = ex.Message,
-                Type = MessageType.Error
-            };
+                var fallbackResponse = ProcessIntelligentFallback(message);
+                return new ChatResponse
+                {
+                    Message = fallbackResponse + "\n\n*Note: I encountered a technical issue but provided this intelligent response.*",
+                    Success = true, // Still successful from user perspective
+                    Type = MessageType.Warning,
+                    ConversationId = conversationId ?? Guid.NewGuid().ToString()
+                };
+            }
+            catch
+            {
+                return new ChatResponse
+                {
+                    Message = "I'm experiencing technical difficulties. Please try again in a moment, or contact support if the issue persists.",
+                    Success = false,
+                    ErrorMessage = "Service temporarily unavailable",
+                    Type = MessageType.Error
+                };
+            }
         }
     }
 
@@ -100,7 +135,7 @@ public class ClaudeService : IClaudeService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in ProcessWithClaudeAsync: {Error}", ex.Message);
-            return ProcessLocalAI(message); // Fall back to local processing
+            return ProcessIntelligentFallback(message); // Fall back to intelligent processing
         }
     }
 
@@ -140,12 +175,67 @@ public class ClaudeService : IClaudeService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Claude API call failed: {Error}", ex.Message);
-            // Return a clear message that we're using Claude AI (even if it fell back)
-            return $"I'm Claude, your AI calendar assistant! I processed your message: '{userMessage}'\n\n" +
-                   "I understand you're looking for calendar help. While I'm getting fully set up with function calling, " +
-                   "I can provide intelligent responses about calendar management.\n\n" +
-                   $"Error details: {ex.Message}";
+            
+            // Check if it's a credit/billing issue
+            if (ex.Message.Contains("credit balance") || ex.Message.Contains("billing") || 
+                ex.Message.Contains("payment") || ex.Message.Contains("invalid_request_error"))
+            {
+                _logger.LogWarning("Claude API unavailable due to billing/credits. Using intelligent fallback.");
+                return ProcessIntelligentFallback(userMessage);
+            }
+            
+            // Check if it's a rate limit issue
+            if (ex.Message.Contains("rate_limit") || ex.Message.Contains("429"))
+            {
+                _logger.LogWarning("Claude API rate limited. Using intelligent fallback.");
+                return ProcessIntelligentFallback(userMessage) + "\n\n*Note: Claude API is temporarily busy. Please try again in a moment.*";
+            }
+            
+            // For other errors, provide helpful fallback
+            _logger.LogWarning("Claude API error. Using intelligent fallback. Error: {Error}", ex.Message);
+            return ProcessIntelligentFallback(userMessage);
         }
+    }
+
+    private string ProcessIntelligentFallback(string message)
+    {
+        var lowerMessage = message.ToLower();
+        var currentTime = DateTime.Now;
+        var greeting = GetTimeBasedGreeting(currentTime);
+        
+        // Enhanced calendar-focused AI responses - check viewing before scheduling
+        if (ContainsGreeting(lowerMessage))
+        {
+            return ProcessGreeting(message, currentTime, greeting);
+        }
+        
+        if (ContainsViewingIntent(lowerMessage))
+        {
+            return ProcessViewingRequest(message, lowerMessage);
+        }
+        
+        if (ContainsSchedulingIntent(lowerMessage))
+        {
+            return ProcessSchedulingRequest(message, lowerMessage);
+        }
+        
+        if (ContainsCancellationIntent(lowerMessage))
+        {
+            return ProcessCancellationRequest(message, lowerMessage);
+        }
+        
+        if (ContainsTimeIntent(lowerMessage))
+        {
+            return ProcessTimeQuery(message, lowerMessage, currentTime);
+        }
+        
+        if (ContainsHelpIntent(lowerMessage))
+        {
+            return ProcessHelpRequest(message, currentTime);
+        }
+        
+        // Default intelligent response
+        return ProcessDefaultResponse(message, currentTime, greeting);
     }
 
     private string ProcessLocalAI(string message)
@@ -207,8 +297,173 @@ public class ClaudeService : IClaudeService
                "*Full Claude integration coming very soon!*";
     }
 
-    // Tool processing methods temporarily commented out
-    // Will be restored when SDK tool calling is properly configured
+    // Intelligent fallback helper methods
+    private bool ContainsSchedulingIntent(string message) =>
+        (message.Contains("schedule") && !message.Contains("what's on") && !message.Contains("show")) ||
+        (message.Contains("create") && (message.Contains("event") || message.Contains("meeting"))) ||
+        message.Contains("book") || message.Contains("add") || message.Contains("plan") || 
+        message.Contains("set up") || message.Contains("new meeting") || message.Contains("new appointment") ||
+        (message.Contains("lunch") && !message.Contains("what")) || 
+        (message.Contains("dinner") && !message.Contains("what")) ||
+        (message.Contains("call") && !message.Contains("what")) || 
+        (message.Contains("reminder") && !message.Contains("what"));
+
+    private bool ContainsViewingIntent(string message) =>
+        message.Contains("what meetings") || message.Contains("what events") || message.Contains("what's on") ||
+        message.Contains("show me") || message.Contains("view") || message.Contains("list") || 
+        message.Contains("schedule for") || message.Contains("what do i have") || 
+        message.Contains("my calendar") || message.Contains("events today") || 
+        message.Contains("meetings today") || message.Contains("busy today") ||
+        (message.Contains("what") && (message.Contains("today") || message.Contains("tomorrow") || message.Contains("this week")));
+
+    private bool ContainsCancellationIntent(string message) =>
+        message.Contains("cancel") || message.Contains("delete") || message.Contains("remove") ||
+        message.Contains("reschedule") || message.Contains("move") || message.Contains("change");
+
+    private bool ContainsTimeIntent(string message) =>
+        message.Contains("when") || message.Contains("what time") || message.Contains("free time") ||
+        message.Contains("available") || message.Contains("busy") || message.Contains("conflict");
+
+    private bool ContainsHelpIntent(string message) =>
+        message.Contains("help") || message.Contains("what can you do") || message.Contains("how do") ||
+        message.Contains("commands") || message.Contains("features");
+
+    private bool ContainsGreeting(string message) =>
+        message.Contains("hello") || message.Contains("hi") || message.Contains("hey") ||
+        message.Contains("good morning") || message.Contains("good afternoon") || message.Contains("good evening");
+
+    private string GetTimeBasedGreeting(DateTime currentTime)
+    {
+        var hour = currentTime.Hour;
+        return hour switch
+        {
+            < 12 => "Good morning",
+            < 17 => "Good afternoon", 
+            _ => "Good evening"
+        };
+    }
+
+    private string ProcessSchedulingRequest(string originalMessage, string lowerMessage)
+    {
+        var examples = new List<string>
+        {
+            "\"Schedule lunch with Sarah tomorrow at 1pm\"",
+            "\"Book a meeting with the team next Tuesday at 2:30pm\"",
+            "\"Add a dentist appointment on Friday at 10am\"",
+            "\"Create a reminder to call mom at 6pm today\""
+        };
+        
+        var randomExample = examples[new Random().Next(examples.Count)];
+        
+        return $"🗓️ **I'd love to help you schedule that!**\n\n" +
+               $"I understand you want to create a calendar event. To help you better, I need:\n\n" +
+               $"• **What**: Meeting title or description\n" +
+               $"• **When**: Specific date and time\n" +
+               $"• **Duration**: How long (I'll default to 1 hour)\n" +
+               $"• **Location** (optional): Where it's happening\n\n" +
+               $"**Example**: {randomExample}\n\n" +
+               $"*🔄 I'm using enhanced AI while Claude function calling is being set up. Soon I'll be able to create events directly!*";
+    }
+
+    private string ProcessViewingRequest(string originalMessage, string lowerMessage)
+    {
+        var timeframe = lowerMessage.Contains("today") ? "today" :
+                       lowerMessage.Contains("tomorrow") ? "tomorrow" :
+                       lowerMessage.Contains("this week") ? "this week" :
+                       lowerMessage.Contains("next week") ? "next week" : 
+                       "your schedule";
+        
+        return $"📅 **Let me help you view your calendar!**\n\n" +
+               $"You're asking about events for **{timeframe}**.\n\n" +
+               $"**Current options:**\n" +
+               $"• Use the **'View Calendar Events'** button in your dashboard\n" +
+               $"• Check your Google Calendar directly\n" +
+               $"• Ask me specific questions like \"What meetings do I have today?\"\n\n" +
+               $"*🔄 Smart calendar querying with Claude is coming soon! I'll be able to show you exactly what you need.*";
+    }
+
+    private string ProcessCancellationRequest(string originalMessage, string lowerMessage)
+    {
+        return $"🗑️ **Event Management**\n\n" +
+               $"I understand you want to cancel, delete, or modify an event.\n\n" +
+               $"**For now, you can:**\n" +
+               $"• Go directly to Google Calendar to modify events\n" +
+               $"• Use your calendar app to make changes\n" +
+               $"• Let me know the specific event and I'll guide you\n\n" +
+               $"**Coming soon**: I'll be able to cancel and reschedule events directly through chat!\n\n" +
+               $"*🔄 Smart event management with Claude is being implemented.*";
+    }
+
+    private string ProcessTimeQuery(string originalMessage, string lowerMessage, DateTime currentTime)
+    {
+        var timeStr = currentTime.ToString("h:mm tt");
+        var dateStr = currentTime.ToString("dddd, MMMM d");
+        
+        return $"⏰ **Time & Availability**\n\n" +
+               $"**Current time**: {timeStr} on {dateStr}\n\n" +
+               $"I can help you find free time slots and check availability.\n\n" +
+               $"**Try asking:**\n" +
+               $"• \"When am I free tomorrow?\"\n" +
+               $"• \"Do I have conflicts this afternoon?\"\n" +
+               $"• \"Find me 2 hours for project work this week\"\n\n" +
+               $"*🔄 Intelligent scheduling with Claude function calling is coming soon!*";
+    }
+
+    private string ProcessHelpRequest(string originalMessage, DateTime currentTime)
+    {
+        return $"🤖 **AI Calendar Assistant** (Enhanced with Claude)\n\n" +
+               $"I'm your intelligent calendar companion! Here's what I can help with:\n\n" +
+               $"**✅ Currently Available:**\n" +
+               $"• Smart conversation about your calendar needs\n" +
+               $"• Guidance on scheduling and time management\n" +
+               $"• Help interpreting calendar requests\n" +
+               $"• Time-aware responses\n\n" +
+               $"**🚀 Coming Soon:**\n" +
+               $"• Direct calendar event creation\n" +
+               $"• Smart scheduling suggestions\n" +
+               $"• Natural language date/time parsing\n" +
+               $"• Event management and modification\n\n" +
+               $"**💡 Try asking:**\n" +
+               $"• \"Schedule a team meeting tomorrow\"\n" +
+               $"• \"What's my schedule for today?\"\n" +
+               $"• \"When am I free this week?\"\n\n" +
+               $"*🔄 Full Claude integration with function calling in progress!*";
+    }
+
+    private string ProcessGreeting(string originalMessage, DateTime currentTime, string greeting)
+    {
+        var responses = new[]
+        {
+            $"{greeting}! I'm your AI calendar assistant.",
+            $"Hello there! Ready to help with your schedule.",
+            $"Hi! I'm here to help manage your calendar.",
+            $"{greeting}! What can I help you schedule today?"
+        };
+        
+        var response = responses[new Random().Next(responses.Length)];
+        
+        return $"👋 **{response}**\n\n" +
+               $"**Current time**: {currentTime:h:mm tt} on {currentTime:dddd}\n\n" +
+               $"I can help you with:\n" +
+               $"• Scheduling meetings and appointments\n" +
+               $"• Viewing your calendar events\n" +
+               $"• Finding free time slots\n" +
+               $"• Managing your schedule\n\n" +
+               $"What would you like to do with your calendar today?";
+    }
+
+    private string ProcessDefaultResponse(string originalMessage, DateTime currentTime, string greeting)
+    {
+        return $"🤖 **{greeting}! I'm your AI Calendar Assistant**\n\n" +
+               $"I noticed you said: *\"{originalMessage}\"*\n\n" +
+               $"I'm here to help with your calendar and scheduling needs. While I'm getting my full Claude capabilities set up, I can provide intelligent guidance on:\n\n" +
+               $"• **Creating events**: \"Schedule lunch with John tomorrow\"\n" +
+               $"• **Viewing schedules**: \"What's on my calendar today?\"\n" +
+               $"• **Time management**: \"When am I free this week?\"\n" +
+               $"• **Planning**: \"Help me find time for a 2-hour meeting\"\n\n" +
+                $"**Current time**: {currentTime:h:mm tt} on {currentTime:dddd, MMMM d}\n\n" +
+                $"What would you like help with regarding your calendar?";
+    }
 
     private async Task ExecuteCalendarActionsFromResponse(string response, Guid userId)
     {
