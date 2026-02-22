@@ -27,6 +27,13 @@ docker-compose.override.yml
 *.swp
 *.swo
 
+# Obsidian vault files (mind maps and documentation)
+vaults/
+
+# Kilo Code agent configuration files
+.kilocode/
+AGENTS.md
+
 # OS
 .DS_Store
 Thumbs.db

@@ -20,6 +20,13 @@ public class ClaudeService : IClaudeService
     private readonly IConfiguration _configuration;
     private readonly AppDbContext _context;
     private string? _currentUserId;
+    private Guid _currentUserDbId;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false
+    };
 
     public ClaudeService(
         IConfiguration configuration,
@@ -61,24 +68,28 @@ public class ClaudeService : IClaudeService
 
             // Check configuration for Claude usage
             var fallbackOnly = _configuration.GetValue<bool>("Claude:FallbackOnly", false);
-            var claudeApiKey = Environment.GetEnvironmentVariable("CLAUDE_API_KEY") 
+            var claudeApiKey = Environment.GetEnvironmentVariable("CLAUDE_API_KEY")
                              ?? _configuration["Claude:ApiKey"];
             
             string response;
+            List<CalendarAction>? actions = null;
             if (fallbackOnly)
             {
-                _logger.LogInformation("Configuration set to fallback only. Using intelligent fallback.");
+                _logger.LogWarning("🔄 FALLBACK MODE ACTIVE: Configuration 'Claude:FallbackOnly' is set to true");
                 response = ProcessIntelligentFallback(message);
             }
             else if (string.IsNullOrEmpty(claudeApiKey))
             {
-                _logger.LogInformation("No Claude API key configured. Using intelligent fallback.");
+                _logger.LogWarning("🔄 FALLBACK MODE ACTIVE: No Claude API key configured");
                 response = ProcessIntelligentFallback(message);
             }
             else
             {
+                _logger.LogInformation("🤖 CLAUDE AI MODE: Using Claude API with tool-calling capabilities");
                 // Try Claude first, fall back to intelligent processing if needed
-                response = await ProcessWithClaudeAsync(message, user.Id, userId);
+                var result = await ProcessWithClaudeAsync(message, user.Id, userId);
+                response = result.Response;
+                actions = result.Actions;
             }
             
             return new ChatResponse
@@ -86,6 +97,7 @@ public class ClaudeService : IClaudeService
                 Message = response,
                 Success = true,
                 Type = MessageType.Success,
+                Actions = actions,
                 ConversationId = conversationId ?? Guid.NewGuid().ToString()
             };
         }
@@ -118,74 +130,124 @@ public class ClaudeService : IClaudeService
         }
     }
 
-    private async Task<string> ProcessWithClaudeAsync(string message, Guid userId, string userEmail)
+    private async Task<(string Response, List<CalendarAction>? Actions)> ProcessWithClaudeAsync(string message, Guid userId, string userEmail)
     {
         try
         {
             // Store current user context for tool execution
             _currentUserId = userEmail;
+            _currentUserDbId = userId;
             
-            _logger.LogInformation("Starting Claude processing for user: {UserEmail}", userEmail);
+            _logger.LogInformation("Starting Claude API processing for user: {UserEmail}", userEmail);
             
-            // Use Claude API
-            var response = await CallClaudeAPIAsync(message);
+            // Use Claude API with tool calling
+            var result = await CallClaudeAPIAsync(message);
             
-            return response;
+            _logger.LogInformation("✅ CLAUDE AI SUCCESS: Response generated using Claude API model");
+            
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in ProcessWithClaudeAsync: {Error}", ex.Message);
-            return ProcessIntelligentFallback(message); // Fall back to intelligent processing
+            _logger.LogError(ex, "❌ CLAUDE API ERROR: {Error}. Falling back to pattern matching.", ex.Message);
+            _logger.LogWarning("🔄 FALLBACK MODE ACTIVATED: Due to Claude API error");
+            return (ProcessIntelligentFallback(message), null); // Fall back to intelligent processing
         }
     }
 
-    private async Task<string> CallClaudeAPIAsync(string userMessage)
+    private async Task<(string Response, List<CalendarAction>? Actions)> CallClaudeAPIAsync(string userMessage)
     {
         try
         {
-            _logger.LogInformation("Making Claude API call for message: {Message}", userMessage);
+            _logger.LogInformation("Making Claude API call with tools for message: {Message}", userMessage);
             
             var messages = new List<Message>()
             {
                 new Message(RoleType.User, userMessage)
             };
 
+            var tools = GetCalendarTools();
+            
             var parameters = new MessageParameters()
             {
                 Messages = messages,
-                MaxTokens = 1000,
-                Model = "claude-3-haiku-20240307", // Use the correct model name
+                MaxTokens = 4096,
+                Model = AnthropicModels.Claude4Sonnet,
                 Stream = false,
-                Temperature = 0.7m,
-                System = new List<SystemMessage>() { new SystemMessage(GetSystemPrompt()) }
-                // Tools will be added when we get the SDK working properly
+                Temperature = 0.3m,
+                System = new List<SystemMessage>() { new SystemMessage(GetSystemPrompt()) },
+                Tools = tools
             };
 
-            _logger.LogInformation("Calling Claude API with model: {Model}", parameters.Model);
-            var response = await _anthropicClient.Messages.GetClaudeMessageAsync(parameters);
-            _logger.LogInformation("Claude API call successful. Response length: {Length}", response.Content.Count);
-
-            // For now, process as simple text response
-            var textContent = response.Content.OfType<TextContent>().FirstOrDefault();
-            var result = textContent?.Text ?? "I received your request but couldn't process it properly.";
+            _logger.LogInformation("Calling Claude API with model: {Model}, tools: {ToolCount}", parameters.Model, tools.Count);
             
-            _logger.LogInformation("Claude response: {Response}", result);
-            return result;
+            var executedActions = new List<CalendarAction>();
+            const int maxToolLoops = 5;
+            var loopCount = 0;
+
+            var response = await _anthropicClient.Messages.GetClaudeMessageAsync(parameters);
+            _logger.LogInformation("Claude API response. StopReason: {StopReason}, Content blocks: {Count}", 
+                response.StopReason, response.Content.Count);
+
+            // Tool-use loop: keep going while Claude wants to call tools
+            while (response.StopReason == "tool_use" && loopCount < maxToolLoops)
+            {
+                loopCount++;
+                _logger.LogInformation("Tool use loop iteration {Loop}", loopCount);
+
+                // Add assistant's response (with tool_use blocks) to conversation
+                messages.Add(new Message { Role = RoleType.Assistant, Content = response.Content });
+
+                // Process each tool call in the response
+                var toolResults = new List<ContentBase>();
+                foreach (var toolUse in response.Content.OfType<ToolUseContent>())
+                {
+                    _logger.LogInformation("Executing tool: {ToolName} (id: {ToolId})", toolUse.Name, toolUse.Id);
+                    _logger.LogInformation("Tool input: {Input}", toolUse.Input?.ToJsonString());
+
+                    var toolResult = await ExecuteToolAsync(toolUse, executedActions);
+                    
+                    toolResults.Add(new ToolResultContent
+                    {
+                        ToolUseId = toolUse.Id,
+                        Content = new List<ContentBase>
+                        {
+                            new TextContent { Text = toolResult }
+                        }
+                    });
+                }
+
+                // Add tool results as a user message and call Claude again
+                messages.Add(new Message { Role = RoleType.User, Content = toolResults });
+                
+                parameters.Messages = messages;
+                response = await _anthropicClient.Messages.GetClaudeMessageAsync(parameters);
+                _logger.LogInformation("Claude follow-up response. StopReason: {StopReason}", response.StopReason);
+            }
+
+            // Extract final text response
+            var textContent = response.Content.OfType<TextContent>().FirstOrDefault();
+            var result = textContent?.Text ?? "I processed your request but couldn't generate a response.";
+            
+            _logger.LogInformation("Final Claude response (length: {Length}): {Response}", result.Length, 
+                result.Length > 200 ? result[..200] + "..." : result);
+            
+            return (result, executedActions.Count > 0 ? executedActions : null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Claude API call failed: {Error}", ex.Message);
             
             // Check if it's a credit/billing issue
-            if (ex.Message.Contains("credit balance") || ex.Message.Contains("billing") || 
+            if (ex.Message.Contains("credit balance") || ex.Message.Contains("billing") ||
                 ex.Message.Contains("payment") || ex.Message.Contains("invalid_request_error"))
             {
-                _logger.LogWarning("Claude API unavailable due to billing/credits. Using intelligent fallback.");
+                _logger.LogWarning("🔄 FALLBACK MODE ACTIVATED: Claude API unavailable due to billing/credits issue");
                 
                 var showCreditMessage = _configuration.GetValue<bool>("Claude:ShowCreditMessage", true);
                 if (showCreditMessage)
                 {
-                    return $"💰 **Claude AI Credits Needed**\n\n" +
+                    return ($"💰 **Claude AI Credits Needed**\n\n" +
                            $"I'm your AI Calendar Assistant! My advanced Claude features need API credits, but I can still provide intelligent help.\n\n" +
                            $"**🤖 Current Capabilities:**\n" +
                            $"• Smart calendar conversation\n" +
@@ -195,27 +257,308 @@ public class ClaudeService : IClaudeService
                            $"**🚀 Your request**: \"{userMessage}\"\n\n" +
                            $"Let me help with that:\n\n" +
                            ProcessIntelligentFallback(userMessage) +
-                           $"\n\n*💡 Add Claude API credits for advanced AI features like direct calendar creation!*";
+                           $"\n\n*💡 Add Claude API credits for advanced AI features like direct calendar creation!*", null);
                 }
                 
-                return ProcessIntelligentFallback(userMessage);
+                return (ProcessIntelligentFallback(userMessage), null);
             }
             
             // Check if it's a rate limit issue
             if (ex.Message.Contains("rate_limit") || ex.Message.Contains("429"))
             {
-                _logger.LogWarning("Claude API rate limited. Using intelligent fallback.");
-                return ProcessIntelligentFallback(userMessage) + "\n\n*Note: Claude API is temporarily busy. Please try again in a moment.*";
+                _logger.LogWarning("🔄 FALLBACK MODE ACTIVATED: Claude API rate limited (HTTP 429)");
+                return (ProcessIntelligentFallback(userMessage) + "\n\n*Note: Claude API is temporarily busy. Please try again in a moment.*", null);
             }
             
             // For other errors, provide helpful fallback
-            _logger.LogWarning("Claude API error. Using intelligent fallback. Error: {Error}", ex.Message);
-            return ProcessIntelligentFallback(userMessage);
+            _logger.LogWarning("🔄 FALLBACK MODE ACTIVATED: Claude API error - {Error}", ex.Message);
+            return (ProcessIntelligentFallback(userMessage), null);
         }
+    }
+
+    /// <summary>
+    /// Registers calendar tools that Claude can call during conversation.
+    /// Uses CommonTool.FromFunc to create typed tool definitions.
+    /// </summary>
+    private List<CommonTool> GetCalendarTools()
+    {
+        var tools = new List<CommonTool>();
+
+        // Tool 1: Create a calendar event
+        tools.Add(CommonTool.FromFunc(
+            "create_calendar_event",
+            (string title, string start_time, string end_time, string? description, string? location) =>
+            {
+                return "DEFERRED"; // Actual execution happens in ExecuteToolAsync
+            },
+            "Creates a new event on the user's Google Calendar. Use ISO 8601 format for times (e.g., '2026-02-23T14:00:00'). If the user doesn't specify an end time, default to 1 hour after start. Parse natural language dates relative to the current date/time provided in the system prompt."
+        ));
+
+        // Tool 2: List calendar events
+        tools.Add(CommonTool.FromFunc(
+            "list_calendar_events",
+            (string start_date, string end_date, int? max_results) =>
+            {
+                return "DEFERRED";
+            },
+            "Lists events from the user's Google Calendar within a date range. Use ISO 8601 format for dates (e.g., '2026-02-23T00:00:00'). For 'today', use today's date from midnight to midnight. For 'this week', use Monday to Sunday."
+        ));
+
+        // Tool 3: Delete a calendar event
+        tools.Add(CommonTool.FromFunc(
+            "delete_calendar_event",
+            (string event_id) =>
+            {
+                return "DEFERRED";
+            },
+            "Deletes an event from the user's Google Calendar by its event ID. You must first list events to get the event ID before deleting."
+        ));
+
+        // Tool 4: Get free/busy information
+        tools.Add(CommonTool.FromFunc(
+            "get_free_busy",
+            (string start_date, string end_date) =>
+            {
+                return "DEFERRED";
+            },
+            "Checks the user's availability (free/busy status) for a given time range. Use ISO 8601 format. Returns busy periods so you can identify free slots."
+        ));
+
+        return tools;
+    }
+
+    /// <summary>
+    /// Executes a tool call from Claude and returns the result as a JSON string.
+    /// </summary>
+    private async Task<string> ExecuteToolAsync(ToolUseContent toolUse, List<CalendarAction> executedActions)
+    {
+        try
+        {
+            var input = toolUse.Input;
+            
+            switch (toolUse.Name)
+            {
+                case "create_calendar_event":
+                    return await ExecuteCreateEventAsync(input, executedActions);
+                    
+                case "list_calendar_events":
+                    return await ExecuteListEventsAsync(input, executedActions);
+                    
+                case "delete_calendar_event":
+                    return await ExecuteDeleteEventAsync(input, executedActions);
+                    
+                case "get_free_busy":
+                    return await ExecuteGetFreeBusyAsync(input, executedActions);
+                    
+                default:
+                    _logger.LogWarning("Unknown tool: {ToolName}", toolUse.Name);
+                    return JsonSerializer.Serialize(new { error = $"Unknown tool: {toolUse.Name}" }, JsonOptions);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing tool {ToolName}: {Error}", toolUse.Name, ex.Message);
+            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+        }
+    }
+
+    private async Task<string> ExecuteCreateEventAsync(JsonNode? input, List<CalendarAction> executedActions)
+    {
+        var title = input?["title"]?.GetValue<string>() ?? "Untitled Event";
+        var startTimeStr = input?["start_time"]?.GetValue<string>();
+        var endTimeStr = input?["end_time"]?.GetValue<string>();
+        var description = input?["description"]?.GetValue<string>();
+        var location = input?["location"]?.GetValue<string>();
+
+        if (string.IsNullOrEmpty(startTimeStr))
+        {
+            return JsonSerializer.Serialize(new { error = "start_time is required" }, JsonOptions);
+        }
+
+        if (!DateTime.TryParse(startTimeStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var startTime))
+        {
+            return JsonSerializer.Serialize(new { error = $"Could not parse start_time: {startTimeStr}" }, JsonOptions);
+        }
+
+        DateTime endTime;
+        if (!string.IsNullOrEmpty(endTimeStr) && DateTime.TryParse(endTimeStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedEnd))
+        {
+            endTime = parsedEnd;
+        }
+        else
+        {
+            endTime = startTime.AddHours(1); // Default 1 hour duration
+        }
+
+        _logger.LogInformation("Creating event: {Title} from {Start} to {End}", title, startTime, endTime);
+
+        var createDto = new CreateEventDto
+        {
+            Title = title,
+            Start = startTime,
+            End = endTime,
+            Description = description,
+            Location = location
+        };
+
+        var createdEvent = await _calendarService.CreateEventAsync(_currentUserDbId, createDto);
+        
+        var action = new CalendarAction
+        {
+            Type = "create_calendar_event",
+            Data = createdEvent,
+            Executed = true,
+            Result = $"Created event '{title}' on {startTime:MM/dd/yyyy} at {startTime:h:mm tt}"
+        };
+        executedActions.Add(action);
+
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            eventId = createdEvent.Id,
+            title = createdEvent.Title,
+            start = createdEvent.Start,
+            end = createdEvent.End,
+            location = createdEvent.Location,
+            message = $"Successfully created event '{title}'"
+        }, JsonOptions);
+    }
+
+    private async Task<string> ExecuteListEventsAsync(JsonNode? input, List<CalendarAction> executedActions)
+    {
+        var startDateStr = input?["start_date"]?.GetValue<string>();
+        var endDateStr = input?["end_date"]?.GetValue<string>();
+        var maxResults = 10;
+        
+        try
+        {
+            var maxResultsNode = input?["max_results"];
+            if (maxResultsNode != null)
+                maxResults = maxResultsNode.GetValue<int>();
+        }
+        catch { /* use default */ }
+
+        var startDate = DateTime.Today;
+        var endDate = DateTime.Today.AddDays(7);
+
+        if (!string.IsNullOrEmpty(startDateStr) && DateTime.TryParse(startDateStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedStart))
+        {
+            startDate = parsedStart;
+        }
+        if (!string.IsNullOrEmpty(endDateStr) && DateTime.TryParse(endDateStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedEnd))
+        {
+            endDate = parsedEnd;
+        }
+
+        _logger.LogInformation("Listing events from {Start} to {End} (max: {Max})", startDate, endDate, maxResults);
+
+        var events = await _calendarService.GetEventsAsync(_currentUserDbId, startDate, endDate);
+        var limitedEvents = events.Take(maxResults).ToList();
+
+        var action = new CalendarAction
+        {
+            Type = "list_calendar_events",
+            Data = limitedEvents,
+            Executed = true,
+            Result = $"Found {limitedEvents.Count} events between {startDate:MM/dd} and {endDate:MM/dd}"
+        };
+        executedActions.Add(action);
+
+        var eventList = limitedEvents.Select(e => new
+        {
+            id = e.Id,
+            title = e.Title,
+            start = e.Start,
+            end = e.End,
+            location = e.Location,
+            description = e.Description
+        }).ToList();
+
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            totalEvents = limitedEvents.Count,
+            events = eventList,
+            dateRange = new { start = startDate, end = endDate }
+        }, JsonOptions);
+    }
+
+    private async Task<string> ExecuteDeleteEventAsync(JsonNode? input, List<CalendarAction> executedActions)
+    {
+        var eventId = input?["event_id"]?.GetValue<string>();
+        
+        if (string.IsNullOrEmpty(eventId))
+        {
+            return JsonSerializer.Serialize(new { error = "event_id is required" }, JsonOptions);
+        }
+
+        _logger.LogInformation("Deleting event: {EventId}", eventId);
+
+        await _calendarService.DeleteEventAsync(_currentUserDbId, eventId);
+
+        var action = new CalendarAction
+        {
+            Type = "delete_calendar_event",
+            Executed = true,
+            Result = $"Deleted event {eventId}"
+        };
+        executedActions.Add(action);
+
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            deletedEventId = eventId,
+            message = "Event successfully deleted"
+        }, JsonOptions);
+    }
+
+    private async Task<string> ExecuteGetFreeBusyAsync(JsonNode? input, List<CalendarAction> executedActions)
+    {
+        var startDateStr = input?["start_date"]?.GetValue<string>();
+        var endDateStr = input?["end_date"]?.GetValue<string>();
+
+        var startDate = DateTime.Today;
+        var endDate = DateTime.Today.AddDays(1);
+
+        if (!string.IsNullOrEmpty(startDateStr) && DateTime.TryParse(startDateStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedStart))
+        {
+            startDate = parsedStart;
+        }
+        if (!string.IsNullOrEmpty(endDateStr) && DateTime.TryParse(endDateStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedEnd))
+        {
+            endDate = parsedEnd;
+        }
+
+        _logger.LogInformation("Checking free/busy from {Start} to {End}", startDate, endDate);
+
+        var freeBusy = await _calendarService.GetFreeBusyAsync(_currentUserDbId, _currentUserId!, startDate, endDate);
+
+        var action = new CalendarAction
+        {
+            Type = "get_free_busy",
+            Data = freeBusy,
+            Executed = true,
+            Result = $"Found {freeBusy.BusyPeriods.Count} busy periods between {startDate:MM/dd} and {endDate:MM/dd}"
+        };
+        executedActions.Add(action);
+
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            busyPeriods = freeBusy.BusyPeriods.Select(bp => new
+            {
+                start = bp.Start,
+                end = bp.End
+            }).ToList(),
+            totalBusyPeriods = freeBusy.BusyPeriods.Count,
+            dateRange = new { start = startDate, end = endDate }
+        }, JsonOptions);
     }
 
     private string ProcessIntelligentFallback(string message)
     {
+        _logger.LogInformation("📝 PROCESSING WITH FALLBACK: Using pattern-matching intelligent fallback for message: {Message}", message);
+        
         var lowerMessage = message.ToLower();
         var currentTime = DateTime.Now;
         var greeting = GetTimeBasedGreeting(currentTime);
@@ -253,65 +596,6 @@ public class ClaudeService : IClaudeService
         
         // Default intelligent response
         return ProcessDefaultResponse(message, currentTime, greeting);
-    }
-
-    private string ProcessLocalAI(string message)
-    {
-        // Enhanced local processing as a fallback while we fix the Claude integration
-        var lowerMessage = message.ToLower();
-
-        if (lowerMessage.Contains("schedule") || lowerMessage.Contains("create") || lowerMessage.Contains("book"))
-        {
-            if (lowerMessage.Contains("meeting") || lowerMessage.Contains("appointment") || 
-                lowerMessage.Contains("lunch") || lowerMessage.Contains("dinner"))
-            {
-                return "I'd love to help you schedule that! To create a calendar event, I need:\n\n" +
-                       "• **What**: Meeting title or description\n" +
-                       "• **When**: Date and time (e.g., 'tomorrow at 2pm')\n" +
-                       "• **How long**: Duration (defaults to 1 hour)\n\n" +
-                       "For example: 'Schedule lunch with Sarah tomorrow at 1pm'\n\n" +
-                       "*Note: Enhanced AI scheduling with Claude is coming soon!*";
-            }
-        }
-
-        if (lowerMessage.Contains("show") || lowerMessage.Contains("view") || 
-            lowerMessage.Contains("list") || lowerMessage.Contains("events"))
-        {
-            return "I can help you view your calendar events! Currently, you can:\n\n" +
-                   "• Use the 'View Calendar Events' button in the dashboard\n" +
-                   "• Check your Google Calendar directly\n\n" +
-                   "*Smart calendar querying with Claude is being implemented!*";
-        }
-
-        if (lowerMessage.Contains("help") || lowerMessage.Contains("what can you do"))
-        {
-            return "🤖 **AI Calendar Assistant** (Enhanced with Claude - Coming Soon!)\n\n" +
-                   "I can help you with:\n" +
-                   "✅ **Schedule meetings** - Natural language event creation\n" +
-                   "✅ **View events** - Smart calendar browsing\n" +
-                   "✅ **Find free time** - Intelligent scheduling suggestions\n" +
-                   "🔄 **Cancel/modify events** - Easy event management\n\n" +
-                   "*Currently using enhanced pattern matching. Full Claude integration in progress!*";
-        }
-
-        if (lowerMessage.Contains("cancel") || lowerMessage.Contains("delete") || lowerMessage.Contains("remove"))
-        {
-            return "🗑️ **Event Management**\n\n" +
-                   "Event deletion and modification features are being developed with Claude AI integration.\n\n" +
-                   "For now, you can:\n" +
-                   "• Use Google Calendar directly to modify events\n" +
-                   "• Use the dashboard to create new events\n\n" +
-                   "*Smart event management coming soon!*";
-        }
-
-        // Default response
-        return "👋 I'm your AI Calendar Assistant!\n\n" +
-               "I'm currently being enhanced with Claude AI for better natural language understanding.\n\n" +
-               "Try asking me to:\n" +
-               "• 'Schedule a meeting with John tomorrow'\n" +
-               "• 'Show my events for this week'\n" +
-               "• 'Help me find time for a 2-hour project meeting'\n\n" +
-               "*Full Claude integration coming very soon!*";
     }
 
     // Intelligent fallback helper methods
@@ -379,7 +663,7 @@ public class ClaudeService : IClaudeService
                $"• **Duration**: How long (I'll default to 1 hour)\n" +
                $"• **Location** (optional): Where it's happening\n\n" +
                $"**Example**: {randomExample}\n\n" +
-               $"*🔄 I'm using enhanced AI while Claude function calling is being set up. Soon I'll be able to create events directly!*";
+               $"*🔄 AI fallback mode — Claude API may be temporarily unavailable.*";
     }
 
     private string ProcessViewingRequest(string originalMessage, string lowerMessage)
@@ -396,7 +680,7 @@ public class ClaudeService : IClaudeService
                $"• Use the **'View Calendar Events'** button in your dashboard\n" +
                $"• Check your Google Calendar directly\n" +
                $"• Ask me specific questions like \"What meetings do I have today?\"\n\n" +
-               $"*🔄 Smart calendar querying with Claude is coming soon! I'll be able to show you exactly what you need.*";
+               $"*🔄 AI fallback mode — Claude API may be temporarily unavailable.*";
     }
 
     private string ProcessCancellationRequest(string originalMessage, string lowerMessage)
@@ -407,8 +691,7 @@ public class ClaudeService : IClaudeService
                $"• Go directly to Google Calendar to modify events\n" +
                $"• Use your calendar app to make changes\n" +
                $"• Let me know the specific event and I'll guide you\n\n" +
-               $"**Coming soon**: I'll be able to cancel and reschedule events directly through chat!\n\n" +
-               $"*🔄 Smart event management with Claude is being implemented.*";
+               $"*🔄 AI fallback mode — Claude API may be temporarily unavailable.*";
     }
 
     private string ProcessTimeQuery(string originalMessage, string lowerMessage, DateTime currentTime)
@@ -423,28 +706,24 @@ public class ClaudeService : IClaudeService
                $"• \"When am I free tomorrow?\"\n" +
                $"• \"Do I have conflicts this afternoon?\"\n" +
                $"• \"Find me 2 hours for project work this week\"\n\n" +
-               $"*🔄 Intelligent scheduling with Claude function calling is coming soon!*";
+               $"*🔄 AI fallback mode — Claude API may be temporarily unavailable.*";
     }
 
     private string ProcessHelpRequest(string originalMessage, DateTime currentTime)
     {
-        return $"🤖 **AI Calendar Assistant** (Enhanced with Claude)\n\n" +
+        return $"🤖 **AI Calendar Assistant**\n\n" +
                $"I'm your intelligent calendar companion! Here's what I can help with:\n\n" +
-               $"**✅ Currently Available:**\n" +
-               $"• Smart conversation about your calendar needs\n" +
-               $"• Guidance on scheduling and time management\n" +
-               $"• Help interpreting calendar requests\n" +
-               $"• Time-aware responses\n\n" +
-               $"**🚀 Coming Soon:**\n" +
-               $"• Direct calendar event creation\n" +
-               $"• Smart scheduling suggestions\n" +
-               $"• Natural language date/time parsing\n" +
-               $"• Event management and modification\n\n" +
+               $"**✅ Available Features:**\n" +
+               $"• Create calendar events from natural language\n" +
+               $"• View your upcoming events and schedule\n" +
+               $"• Check your availability / free time\n" +
+               $"• Delete or manage events\n\n" +
                $"**💡 Try asking:**\n" +
-               $"• \"Schedule a team meeting tomorrow\"\n" +
-               $"• \"What's my schedule for today?\"\n" +
-               $"• \"When am I free this week?\"\n\n" +
-               $"*🔄 Full Claude integration with function calling in progress!*";
+               $"• \"Schedule a team meeting tomorrow at 2pm\"\n" +
+               $"• \"What's on my calendar today?\"\n" +
+               $"• \"When am I free this week?\"\n" +
+               $"• \"Delete my 3pm meeting\"\n\n" +
+               $"*🔄 AI fallback mode — Claude API may be temporarily unavailable.*";
     }
 
     private string ProcessGreeting(string originalMessage, DateTime currentTime, string greeting)
@@ -473,7 +752,7 @@ public class ClaudeService : IClaudeService
     {
         return $"🤖 **{greeting}! I'm your AI Calendar Assistant**\n\n" +
                $"I noticed you said: *\"{originalMessage}\"*\n\n" +
-               $"I'm here to help with your calendar and scheduling needs. While I'm getting my full Claude capabilities set up, I can provide intelligent guidance on:\n\n" +
+               $"I'm here to help with your calendar and scheduling needs:\n\n" +
                $"• **Creating events**: \"Schedule lunch with John tomorrow\"\n" +
                $"• **Viewing schedules**: \"What's on my calendar today?\"\n" +
                $"• **Time management**: \"When am I free this week?\"\n" +
@@ -482,33 +761,31 @@ public class ClaudeService : IClaudeService
                 $"What would you like help with regarding your calendar?";
     }
 
-    private async Task ExecuteCalendarActionsFromResponse(string response, Guid userId)
-    {
-        // This method is no longer needed as we handle tool execution in ProcessClaudeResponse
-        await Task.CompletedTask;
-    }
-
-    // Temporarily commented out until SDK tool calling is properly configured
-    // private List<CommonTool> GetCalendarTools() { ... }
-
     private string GetSystemPrompt()
     {
-        return @"You are Claude, an AI assistant that helps users manage their Google Calendar through natural language interactions.
+        return @"You are an AI calendar assistant that helps users manage their Google Calendar through natural language.
 
-You are friendly, helpful, and conversational. You can help users with:
-- Creating calendar events (meetings, appointments, reminders)
-- Viewing existing events and schedules
-- Finding free time slots for meetings
-- Managing their overall schedule
+You have access to the following tools to interact with the user's Google Calendar:
+- create_calendar_event: Create new events
+- list_calendar_events: View existing events  
+- delete_calendar_event: Remove events (requires event ID — list events first)
+- get_free_busy: Check availability
 
-Current date and time: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + @"
-
-When users ask about calendar operations, provide helpful responses and guidance. Parse dates and times intelligently (e.g., 'tomorrow at 2pm', 'next Friday', 'in 2 hours'). 
-
-Always respond in a natural, conversational way and offer to help with specific calendar tasks. If you need more information to complete a task, ask clarifying questions.";
+IMPORTANT RULES:
+1. Current date and time: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss (dddd)") + @"
+2. When the user asks to schedule/create/book something, USE the create_calendar_event tool immediately. Do NOT just describe what you would do.
+3. When the user asks to see/view/show events, USE the list_calendar_events tool. Do NOT tell them to check their calendar manually.
+4. When the user asks about availability or free time, USE the get_free_busy tool.
+5. When the user asks to cancel/delete an event, first USE list_calendar_events to find the event ID, then USE delete_calendar_event.
+6. Parse natural language dates relative to the current date above. 'Tomorrow' means " + DateTime.Now.AddDays(1).ToString("yyyy-MM-dd") + @". 'Next Monday' means the coming Monday, etc.
+7. Default event duration is 1 hour if not specified.
+8. Use ISO 8601 format for all dates/times passed to tools.
+9. After executing a tool, summarize what you did in a friendly, concise way.
+10. If a tool call fails, explain the error clearly and suggest alternatives.
+11. Be conversational but efficient. Don't over-explain — just do what the user asks.";
     }
 
-    // Implementation of interface methods for future use
+    // Implementation of interface methods
     public async Task<CalendarAction> CreateCalendarEventAsync(CreateEventToolCall toolCall, string userId)
     {
         try
@@ -601,14 +878,38 @@ Always respond in a natural, conversational way and offer to help with specific 
 
     public async Task<CalendarAction> FindFreeTimeAsync(FindFreeTimeToolCall toolCall, string userId)
     {
-        // Simplified implementation for now
-        await Task.CompletedTask;
-        
-        return new CalendarAction
+        try
         {
-            Type = "find_free_time",
-            Executed = true,
-            Result = "Free time finding is being enhanced with Claude AI. Check back soon!"
-        };
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == userId);
+            if (user == null)
+            {
+                return new CalendarAction
+                {
+                    Type = "find_free_time",
+                    Executed = false,
+                    ErrorMessage = "User not found"
+                };
+            }
+
+            var freeBusy = await _calendarService.GetFreeBusyAsync(
+                user.Id, userId, toolCall.StartDate, toolCall.EndDate);
+
+            return new CalendarAction
+            {
+                Type = "find_free_time",
+                Data = freeBusy,
+                Executed = true,
+                Result = $"Found {freeBusy.BusyPeriods.Count} busy periods. Free time available outside those periods."
+            };
+        }
+        catch (Exception ex)
+        {
+            return new CalendarAction
+            {
+                Type = "find_free_time",
+                Executed = false,
+                ErrorMessage = ex.Message
+            };
+        }
     }
 }
