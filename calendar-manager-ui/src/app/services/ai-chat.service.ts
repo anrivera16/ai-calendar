@@ -66,14 +66,17 @@ export class AiChatService {
     }, 35000); // 35 second safety timeout
 
     // Call Claude backend
+    console.log('🔄 Sending message to backend:', message);
     this.apiService.processChatMessage(message, 'test@example.com', this.conversationId)
       .subscribe({
         next: (response) => {
+          console.log('✅ Received backend response:', response);
           clearTimeout(safetyTimeout);
           this.handleBackendResponse(response);
           this.processingSubject.next(false);
         },
         error: (error) => {
+          console.error('❌ Backend error:', error);
           clearTimeout(safetyTimeout);
           this.handleError(error);
           this.processingSubject.next(false);
@@ -89,6 +92,8 @@ export class AiChatService {
 
 
   private handleBackendResponse(response: any): void {
+    console.log('📝 Processing backend response:', response);
+    
     // Update conversation ID
     if (response.conversationId) {
       this.conversationId = response.conversationId;

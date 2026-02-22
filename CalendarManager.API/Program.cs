@@ -36,7 +36,7 @@ builder.Services.AddCors(options =>
         policy =>
         {
             var allowedOrigins = builder.Configuration.GetSection("CORS:AllowedOrigins").Get<string[]>() 
-                ?? new[] { "http://localhost:3000", "http://localhost:5173", "http://localhost:8080" };
+                ?? new[] { "http://localhost:3000", "http://localhost:4200", "http://localhost:5173", "http://localhost:8080" };
             
             // Add production frontend URL from environment variable
             var productionUrl = Environment.GetEnvironmentVariable("FRONTEND_URL");

@@ -154,7 +154,7 @@ public class ClaudeService : IClaudeService
             {
                 Messages = messages,
                 MaxTokens = 1000,
-                Model = AnthropicModels.Claude35Haiku,
+                Model = "claude-3-haiku-20240307", // Use the correct model name
                 Stream = false,
                 Temperature = 0.7m,
                 System = new List<SystemMessage>() { new SystemMessage(GetSystemPrompt()) }
