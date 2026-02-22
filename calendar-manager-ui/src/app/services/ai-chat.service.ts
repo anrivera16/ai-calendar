@@ -143,11 +143,27 @@ export class AiChatService {
     this.addMessage(errorMessage);
   }
 
-  private mapMessageType(backendType: string): 'info' | 'success' | 'error' | 'warning' {
-    switch (backendType?.toLowerCase()) {
+  private mapMessageType(backendType: string | number): 'info' | 'success' | 'error' | 'warning' {
+    // Handle both string and numeric backend types
+    const typeStr = typeof backendType === 'number' ? 
+      this.getMessageTypeFromNumber(backendType) : 
+      backendType?.toString()?.toLowerCase();
+      
+    switch (typeStr) {
       case 'success': return 'success';
       case 'error': return 'error';
       case 'warning': return 'warning';
+      default: return 'info';
+    }
+  }
+
+  private getMessageTypeFromNumber(type: number): string {
+    // Based on the backend MessageType enum
+    switch (type) {
+      case 0: return 'info';
+      case 1: return 'success';
+      case 2: return 'warning';
+      case 3: return 'error';
       default: return 'info';
     }
   }
