@@ -59,3 +59,15 @@ publish/
 *.user
 *.userosscache
 *.sln.docstates
+
+# Security: Never commit secrets or credentials
+**/secrets.json
+**/appsettings.Development.Local.json
+**/*.pfx
+**/*.key
+**/*.pem
+
+# Security: Credential files
+credentials.json
+service-account.json
+*-credentials.json

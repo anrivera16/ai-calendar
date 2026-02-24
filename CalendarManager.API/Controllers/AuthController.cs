@@ -13,12 +13,14 @@ public class AuthController : ControllerBase
     private readonly IOAuthService _oauthService;
     private readonly AppDbContext _context;
     private readonly IConfiguration _configuration;
+    private readonly ILogger<AuthController> _logger;
 
-    public AuthController(IOAuthService oauthService, AppDbContext context, IConfiguration configuration)
+    public AuthController(IOAuthService oauthService, AppDbContext context, IConfiguration configuration, ILogger<AuthController> logger)
     {
         _oauthService = oauthService;
         _context = context;
         _configuration = configuration;
+        _logger = logger;
     }
 
     /// <summary>
@@ -39,7 +41,8 @@ public class AuthController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = "Failed to initiate OAuth flow", details = ex.Message });
+            _logger.LogError(ex, "Failed to initiate OAuth flow");
+            return BadRequest(new { error = "Failed to initiate OAuth flow" });
         }
     }
 
@@ -52,6 +55,13 @@ public class AuthController : ControllerBase
         if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
         {
             return BadRequest(new { error = "Missing authorization code or state parameter" });
+        }
+
+        // Validate state parameter length to prevent injection
+        if (state.Length != 32 || !state.All(c => char.IsLetterOrDigit(c)))
+        {
+            _logger.LogWarning("Invalid state parameter received in OAuth callback");
+            return BadRequest(new { error = "Invalid state parameter" });
         }
 
         try
@@ -87,11 +97,12 @@ public class AuthController : ControllerBase
         }
         catch (Exception ex)
         {
-            // Redirect to frontend with error message
+            _logger.LogError(ex, "OAuth callback failed");
+            // Redirect to frontend with error message (sanitized)
             var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") 
                 ?? _configuration["Frontend:Url"] 
                 ?? "http://localhost:4201";
-            var redirectUrl = $"{frontendUrl}?auth=error&message={Uri.EscapeDataString(ex.Message)}";
+            var redirectUrl = $"{frontendUrl}?auth=error&message={Uri.EscapeDataString("Authentication failed")}";
             
             return Redirect(redirectUrl);
         }
@@ -101,11 +112,18 @@ public class AuthController : ControllerBase
     /// Checks the current authentication status
     /// </summary>
     [HttpGet("status")]
-    public async Task<IActionResult> Status([FromQuery] string? userEmail = "test@example.com")
+    public async Task<IActionResult> Status([FromQuery] string? userEmail = null)
     {
+        // Security: Require userEmail parameter instead of using default
         if (string.IsNullOrEmpty(userEmail))
         {
-            return BadRequest(new { error = "User email is required" });
+            return Ok(new { authenticated = false, message = "No user specified" });
+        }
+
+        // Validate email format to prevent injection
+        if (!IsValidEmail(userEmail))
+        {
+            return BadRequest(new { error = "Invalid email format" });
         }
 
         try
@@ -131,7 +149,8 @@ public class AuthController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = "Failed to check auth status", details = ex.Message });
+            _logger.LogError(ex, "Failed to check auth status for user {UserEmail}", userEmail);
+            return BadRequest(new { error = "Failed to check auth status" });
         }
     }
 
@@ -139,11 +158,17 @@ public class AuthController : ControllerBase
     /// Logs out the user by revoking OAuth tokens
     /// </summary>
     [HttpPost("logout")]
-    public async Task<IActionResult> Logout([FromQuery] string? userEmail = "test@example.com")
+    public async Task<IActionResult> Logout([FromQuery] string? userEmail = null)
     {
         if (string.IsNullOrEmpty(userEmail))
         {
             return BadRequest(new { error = "User email is required" });
+        }
+
+        // Validate email format
+        if (!IsValidEmail(userEmail))
+        {
+            return BadRequest(new { error = "Invalid email format" });
         }
 
         try
@@ -161,7 +186,8 @@ public class AuthController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = "Logout failed", details = ex.Message });
+            _logger.LogError(ex, "Logout failed for user {UserEmail}", userEmail);
+            return BadRequest(new { error = "Logout failed" });
         }
     }
 
@@ -169,11 +195,17 @@ public class AuthController : ControllerBase
     /// Test endpoint to verify token refresh works
     /// </summary>
     [HttpPost("test-token")]
-    public async Task<IActionResult> TestToken([FromQuery] string? userEmail = "test@example.com")
+    public async Task<IActionResult> TestToken([FromQuery] string? userEmail = null)
     {
         if (string.IsNullOrEmpty(userEmail))
         {
             return BadRequest(new { error = "User email is required" });
+        }
+
+        // Validate email format
+        if (!IsValidEmail(userEmail))
+        {
+            return BadRequest(new { error = "Invalid email format" });
         }
 
         try
@@ -192,13 +224,26 @@ public class AuthController : ControllerBase
             { 
                 success = true, 
                 message = "Access token retrieved successfully",
-                tokenLength = accessToken.Length,
-                startsWithBearer = accessToken.StartsWith("ya29") // Google tokens typically start with ya29
+                tokenLength = accessToken.Length
             });
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = "Failed to get access token", details = ex.Message });
+            _logger.LogError(ex, "Failed to get access token for user {UserEmail}", userEmail);
+            return BadRequest(new { error = "Failed to get access token" });
         }
+    }
+
+    /// <summary>
+    /// Validates email format using simple regex pattern
+    /// </summary>
+    private static bool IsValidEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return false;
+        
+        // Simple email validation - more restrictive than necessary but safe
+        var emailPattern = @"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$";
+        return System.Text.RegularExpressions.Regex.IsMatch(email, emailPattern);
     }
 }

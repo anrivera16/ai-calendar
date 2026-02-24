@@ -311,8 +311,7 @@ public class OAuthService : IOAuthService
         var expiresAt = DateTime.UtcNow.AddMinutes(10);
         _codeVerifiers[state] = (codeVerifier, expiresAt);
         
-        Console.WriteLine($"[DEBUG] Stored code verifier for state: {state}, expires at: {expiresAt}");
-        Console.WriteLine($"[DEBUG] Total verifiers in memory: {_codeVerifiers.Count}");
+        // Security: Do not log code verifier or state details
     }
 
     public string? RetrieveCodeVerifier(string state)
@@ -320,27 +319,14 @@ public class OAuthService : IOAuthService
         // Retrieve and remove PKCE code verifier (one-time use)
         // Check expiration to prevent stale verifiers
         
-        Console.WriteLine($"[DEBUG] Attempting to retrieve code verifier for state: {state}");
-        Console.WriteLine($"[DEBUG] Current verifiers in memory: {_codeVerifiers.Count}");
-        
         if (_codeVerifiers.TryRemove(state, out var verifierData))
         {
-            Console.WriteLine($"[DEBUG] Found verifier, checking expiration. Expires at: {verifierData.ExpiresAt}, Current time: {DateTime.UtcNow}");
-            
             // Check if expired
             if (verifierData.ExpiresAt > DateTime.UtcNow)
             {
-                Console.WriteLine($"[DEBUG] Code verifier is valid, returning it");
                 return verifierData.CodeVerifier;
             }
-            else
-            {
-                Console.WriteLine($"[DEBUG] Code verifier has expired");
-            }
-        }
-        else
-        {
-            Console.WriteLine($"[DEBUG] No code verifier found for state: {state}");
+            // Expired verifier - silently return null
         }
         
         return null;
