@@ -61,16 +61,20 @@ if (string.IsNullOrEmpty(connectionString))
     throw new InvalidOperationException("Database connection string not found. Set ConnectionStrings:DefaultConnection in appsettings.json or DATABASE_URL environment variable.");
 }
 
-Console.WriteLine($"[DEBUG] Using connection string: {connectionString}");
-
 // Parse DATABASE_URL format for cloud providers like Heroku/Railway
+// Note: Connection string is NOT logged to avoid exposing credentials
 if (connectionString.StartsWith("postgres://") || connectionString.StartsWith("postgresql://"))
 {
-    var uri = new Uri(connectionString);
-    var userInfo = uri.UserInfo.Split(':');
-    connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]}";
-    
-    Console.WriteLine($"[DEBUG] Converted connection string: {connectionString}");
+    try
+    {
+        var uri = new Uri(connectionString);
+        var userInfo = uri.UserInfo.Split(':');
+        connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]}";
+    }
+    catch (Exception ex)
+    {
+        throw new InvalidOperationException("Failed to parse DATABASE_URL. Ensure it's in the correct format.", ex);
+    }
 }
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -110,6 +114,30 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseHttpsRedirection();
+
+// Security headers middleware
+app.Use(async (context, next) =>
+{
+    // Prevent clickjacking
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    
+    // Prevent MIME type sniffing
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    
+    // Enable XSS protection in browsers
+    context.Response.Headers["X-XSS-Protection"] = "1; mode=block";
+    
+    // Control referrer information
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    
+    // Content Security Policy
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; frame-ancestors 'none';";
+    
+    // Permissions Policy (formerly Feature Policy)
+    context.Response.Headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()";
+    
+    await next();
+});
 
 // Use CORS
 app.UseCors("AllowSpecificOrigins");
