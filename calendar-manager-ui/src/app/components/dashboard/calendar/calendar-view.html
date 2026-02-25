@@ -1,0 +1,91 @@
+<div class="calendar-container">
+  <!-- Calendar Header -->
+  <div class="calendar-header">
+    <button class="nav-btn" (click)="previousMonth()" aria-label="Previous month">
+      ◀
+    </button>
+    <h3 class="month-title" (click)="goToToday()">{{ getMonthYear() }}</h3>
+    <button class="nav-btn" (click)="nextMonth()" aria-label="Next month">
+      ▶
+    </button>
+  </div>
+
+  <!-- Calendar Grid -->
+  <div class="calendar-grid">
+    <!-- Week Day Headers -->
+    <div class="weekday-header" *ngFor="let day of weekDays">
+      {{ day }}
+    </div>
+
+    <!-- Calendar Days -->
+    <div
+      class="calendar-day"
+      *ngFor="let day of calendarDays"
+      [class.other-month]="!day.isCurrentMonth"
+      [class.today]="day.isToday"
+      [class.selected]="selectedDay && day.date.getTime() === selectedDay.getTime()"
+      [class.has-events]="day.events.length > 0"
+      (click)="onDayClick(day)"
+    >
+      <span class="day-number">{{ day.dayNumber }}</span>
+      <div class="event-indicators" *ngIf="day.events.length > 0">
+        <span
+          class="event-dot"
+          *ngFor="let event of day.events.slice(0, 3)"
+          [class.highlighted]="isEventHighlighted(event)"
+        ></span>
+        <span class="more-events" *ngIf="day.events.length > 3">
+          +{{ day.events.length - 3 }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Selected Day Events -->
+  <div class="day-events" *ngIf="selectedDay">
+    <h4 class="events-title">
+      {{ selectedDay | date:'EEEE, MMMM d' }}
+    </h4>
+    <div class="events-list" *ngIf="getEventsForDate(selectedDay).length > 0">
+      <div
+        class="event-item"
+        *ngFor="let event of getEventsForDate(selectedDay)"
+        [class.highlighted]="isEventHighlighted(event)"
+        (click)="onEventClick(event, $event)"
+      >
+        <div class="event-time">{{ formatEventTime(event) }}</div>
+        <div class="event-title">{{ event.title }}</div>
+        <div class="event-description" *ngIf="event.description">
+          {{ event.description }}
+        </div>
+      </div>
+    </div>
+    <div class="no-events" *ngIf="getEventsForDate(selectedDay).length === 0">
+      No events scheduled
+    </div>
+  </div>
+
+  <!-- Today's Events (when no day selected) -->
+  <div class="today-events" *ngIf="!selectedDay">
+    <h4 class="events-title">Today's Events</h4>
+    <div class="events-list" *ngIf="getEventsForDate(today).length > 0">
+      <div
+        class="event-item"
+        *ngFor="let event of getEventsForDate(today)"
+        [class.highlighted]="isEventHighlighted(event)"
+        (click)="onEventClick(event, $event)"
+      >
+        <div class="event-time">{{ formatEventTime(event) }}</div>
+        <div class="event-title">{{ event.title }}</div>
+      </div>
+    </div>
+    <div class="no-events" *ngIf="getEventsForDate(today).length === 0">
+      No events today
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" *ngIf="loading">
+    <div class="spinner"></div>
+  </div>
+</div>

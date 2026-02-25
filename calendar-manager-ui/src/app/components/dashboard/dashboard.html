@@ -2,7 +2,7 @@
   <!-- Header -->
   <header class="dashboard-header">
     <div class="header-content">
-      <h1>🗓️ AI Calendar Manager</h1>
+      <h1>🗓️ AI Calendar</h1>
       <div class="user-info" *ngIf="user$ | async as user">
         <span class="welcome">Welcome, {{ user.displayName }}!</span>
         <button class="logout-btn" (click)="onLogout()" [disabled]="loading$ | async">
@@ -10,173 +10,54 @@
         </button>
       </div>
     </div>
+    <div class="header-actions">
+      <button class="test-btn" (click)="onTestToken()" [disabled]="loading$ | async">
+        🧪 Test
+      </button>
+      <button class="refresh-btn" (click)="onLoadCalendar()" [disabled]="calendarLoading$ | async">
+        🔄
+      </button>
+    </div>
   </header>
 
-  <!-- Main Content -->
+  <!-- Mobile Toggle -->
+  <div class="mobile-toggle" *ngIf="showMobileToggle">
+    <button
+      class="toggle-btn"
+      [class.active]="activePanel === 'chat'"
+      (click)="setActivePanel('chat')"
+    >
+      💬 Chat
+    </button>
+    <button
+      class="toggle-btn"
+      [class.active]="activePanel === 'calendar'"
+      (click)="setActivePanel('calendar')"
+    >
+      📅 Calendar
+    </button>
+  </div>
+
+  <!-- Main Content - Split Layout -->
   <main class="dashboard-main">
-    <div class="container">
-      
-      <!-- Status Card -->
-      <div class="card status-card">
-        <div class="card-header">
-          <h2>🔐 Authentication Status</h2>
-        </div>
-        <div class="card-content">
-          <div class="status-item">
-            <span class="status-label">Status:</span>
-            <span class="status-value authenticated">✅ Connected to Google Calendar</span>
-          </div>
-          <div class="status-item" *ngIf="user$ | async as user">
-            <span class="status-label">Account:</span>
-            <span class="status-value">{{ user.email }}</span>
-          </div>
-          <div class="status-item" *ngIf="user$ | async as user">
-            <span class="status-label">User ID:</span>
-            <span class="status-value">{{ user.id }}</span>
-          </div>
-        </div>
-      </div>
+    <!-- Chat Panel (60% on desktop) -->
+    <section class="chat-section" [class.mobile-hidden]="showMobileToggle && activePanel !== 'chat'">
+      <app-chat-panel
+        [messages]="(messages$ | async) || []"
+        [processing]="(chatProcessing$ | async) || false"
+        (sendMessage)="onSendMessage($event)"
+      ></app-chat-panel>
+    </section>
 
-      <!-- Actions Card -->
-      <div class="card actions-card">
-        <div class="card-header">
-          <h2>🛠️ Actions</h2>
-        </div>
-        <div class="card-content">
-          <div class="action-buttons">
-            <button 
-              class="action-btn test-btn" 
-              (click)="onTestToken()"
-              [disabled]="loading$ | async">
-              <span class="btn-icon">🧪</span>
-              Test Access Token
-            </button>
-            
-            <button 
-              class="action-btn events-btn" 
-              (click)="onLoadCalendar()"
-              [disabled]="loading$ | async">
-              <span class="btn-icon">📅</span>
-              View Calendar Events
-            </button>
-            
-            <button 
-              class="action-btn chat-btn" 
-              (click)="onToggleChat()"
-              [disabled]="loading$ | async">
-              <span class="btn-icon">💬</span>
-              {{ showChat ? 'Hide' : 'Open' }} AI Chat
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- AI Chat Interface -->
-      <div class="card chat-card" *ngIf="showChat">
-        <div class="card-header">
-          <h2>🤖 AI Calendar Assistant</h2>
-          <button class="close-btn" (click)="onToggleChat()">×</button>
-        </div>
-        <div class="card-content">
-          <div class="chat-messages">
-            <div 
-              *ngFor="let message of messages$ | async" 
-              class="message"
-              [ngClass]="getMessageClass(message)">
-              <div class="message-content">
-                <div class="message-text">{{ message.text }}</div>
-                <div class="message-time">{{ message.timestamp | date:'short' }}</div>
-              </div>
-            </div>
-            <div *ngIf="chatProcessing$ | async" class="message ai-message processing">
-              <div class="message-content">
-                <div class="message-text">🤖 Thinking...</div>
-              </div>
-            </div>
-          </div>
-          <div class="chat-input">
-            <input 
-              type="text" 
-              [(ngModel)]="chatMessage"
-              (keypress)="onKeyPress($event)"
-              placeholder="Ask me to schedule meetings, show events, etc..."
-              [disabled]="!!(chatProcessing$ | async)">
-            <button 
-              (click)="onSendMessage()" 
-              [disabled]="!chatMessage.trim() || (chatProcessing$ | async)"
-              class="send-btn">
-              Send
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Calendar Events -->
-      <div class="card calendar-card" *ngIf="showCalendar">
-        <div class="card-header">
-          <h2>📅 Your Calendar Events</h2>
-          <button class="refresh-btn" (click)="onLoadCalendar()" [disabled]="calendarLoading$ | async">
-            🔄 Refresh
-          </button>
-        </div>
-        <div class="card-content">
-          <div *ngIf="calendarLoading$ | async" class="loading-message">
-            🔄 Loading your calendar events...
-          </div>
-          
-          <div *ngIf="!(calendarLoading$ | async)" class="events-list">
-            <div *ngFor="let event of events$ | async" class="event-item">
-              <div class="event-title">{{ event.title }}</div>
-              <div class="event-time">{{ formatEventDate(event) }}</div>
-              <div class="event-description" *ngIf="event.description">{{ event.description }}</div>
-            </div>
-            
-            <div *ngIf="(events$ | async)?.length === 0" class="no-events">
-              📭 No events found. Try asking the AI to create one!
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Coming Soon Card -->
-      <div class="card features-card">
-        <div class="card-header">
-          <h2>🚀 Coming Soon</h2>
-        </div>
-        <div class="card-content">
-          <div class="feature-list">
-            <div class="feature-item">
-              <span class="feature-icon">⏰</span>
-              <div class="feature-text">
-                <h3>Smart Scheduling</h3>
-                <p>Find optimal meeting times based on availability</p>
-              </div>
-            </div>
-            <div class="feature-item">
-              <span class="feature-icon">🔄</span>
-              <div class="feature-text">
-                <h3>Event Management</h3>
-                <p>Edit and delete calendar events through AI chat</p>
-              </div>
-            </div>
-            <div class="feature-item">
-              <span class="feature-icon">📊</span>
-              <div class="feature-text">
-                <h3>Calendar Analytics</h3>
-                <p>Insights about your meeting patterns and time usage</p>
-              </div>
-            </div>
-            <div class="feature-item">
-              <span class="feature-icon">🔔</span>
-              <div class="feature-text">
-                <h3>Smart Reminders</h3>
-                <p>AI-powered notifications and meeting preparation</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </div>
+    <!-- Calendar Panel (40% on desktop) -->
+    <section class="calendar-section" [class.mobile-hidden]="showMobileToggle && activePanel !== 'calendar'">
+      <app-calendar-view
+        [events]="(events$ | async) || []"
+        [highlightedEventId]="highlightedEventId"
+        [loading]="(calendarLoading$ | async) || false"
+        (daySelected)="onDaySelected($event)"
+        (eventSelected)="onEventSelected($event)"
+      ></app-calendar-view>
+    </section>
   </main>
 </div>

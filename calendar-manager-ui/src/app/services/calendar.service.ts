@@ -9,7 +9,7 @@ import { CalendarEvent, CreateEvent, UpdateEvent } from '../models/calendar.mode
 export class CalendarService {
   private eventsSubject = new BehaviorSubject<CalendarEvent[]>([]);
   public events$ = this.eventsSubject.asObservable();
-  
+
   private loadingSubject = new BehaviorSubject<boolean>(false);
   public loading$ = this.loadingSubject.asObservable();
 
@@ -17,7 +17,7 @@ export class CalendarService {
 
   loadEvents(start?: string, end?: string): void {
     this.loadingSubject.next(true);
-    
+
     // Default to current month if no dates provided
     if (!start || !end) {
       const now = new Date();
@@ -27,6 +27,7 @@ export class CalendarService {
 
     this.apiService.getCalendarEvents(start, end).subscribe({
       next: (events) => {
+        console.log('Loaded events:', events.length, 'from', start, 'to', end);
         this.eventsSubject.next(events);
         this.loadingSubject.next(false);
       },
@@ -40,7 +41,7 @@ export class CalendarService {
 
   createEvent(event: CreateEvent): Observable<CalendarEvent> {
     this.loadingSubject.next(true);
-    
+
     return new Observable(observer => {
       this.apiService.createCalendarEvent(event).subscribe({
         next: (newEvent) => {
@@ -61,7 +62,7 @@ export class CalendarService {
 
   updateEvent(eventId: string, event: UpdateEvent): Observable<CalendarEvent> {
     this.loadingSubject.next(true);
-    
+
     return new Observable(observer => {
       this.apiService.updateCalendarEvent(eventId, event).subscribe({
         next: (updatedEvent) => {
@@ -86,7 +87,7 @@ export class CalendarService {
 
   deleteEvent(eventId: string): Observable<void> {
     this.loadingSubject.next(true);
-    
+
     return new Observable(observer => {
       this.apiService.deleteCalendarEvent(eventId).subscribe({
         next: () => {
@@ -110,23 +111,23 @@ export class CalendarService {
   formatEventDate(event: CalendarEvent): string {
     const start = new Date(event.start);
     const end = new Date(event.end);
-    
+
     const dateFormatter = new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric'
     });
-    
+
     const timeFormatter = new Intl.DateTimeFormat('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true
     });
-    
+
     const startDate = dateFormatter.format(start);
     const startTime = timeFormatter.format(start);
     const endTime = timeFormatter.format(end);
-    
+
     return `${startDate} from ${startTime} to ${endTime}`;
   }
 }
