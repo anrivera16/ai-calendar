@@ -22,6 +22,237 @@ namespace CalendarManager.API.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("CalendarManager.API.Data.Entities.AvailabilityRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BusinessProfileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("business_profile_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("DayOfWeek")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_of_week");
+
+                    b.Property<TimeSpan?>("EndTime")
+                        .HasColumnType("interval")
+                        .HasColumnName("end_time");
+
+                    b.Property<bool>("IsAvailable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_available");
+
+                    b.Property<int>("RuleType")
+                        .HasColumnType("integer")
+                        .HasColumnName("rule_type");
+
+                    b.Property<DateTime?>("SpecificDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("specific_date");
+
+                    b.Property<TimeSpan?>("StartTime")
+                        .HasColumnType("interval")
+                        .HasColumnName("start_time");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BusinessProfileId");
+
+                    b.HasIndex("BusinessProfileId", "SpecificDate");
+
+                    b.ToTable("availability_rules", (string)null);
+                });
+
+            modelBuilder.Entity("CalendarManager.API.Data.Entities.Booking", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BusinessProfileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("business_profile_id");
+
+                    b.Property<Guid>("CancellationToken")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cancellation_token");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime>("EndTime")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("end_time");
+
+                    b.Property<string>("GoogleCalendarEventId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("google_calendar_event_id");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("notes");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_id");
+
+                    b.Property<DateTime>("StartTime")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BusinessProfileId");
+
+                    b.HasIndex("CancellationToken")
+                        .IsUnique();
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("ServiceId");
+
+                    b.HasIndex("BusinessProfileId", "StartTime");
+
+                    b.ToTable("bookings", (string)null);
+                });
+
+            modelBuilder.Entity("CalendarManager.API.Data.Entities.BusinessProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("address");
+
+                    b.Property<string>("BusinessName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("business_name");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("logo_url");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("slug");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("Website")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("website");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("business_profiles", (string)null);
+                });
+
+            modelBuilder.Entity("CalendarManager.API.Data.Entities.Client", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("phone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email");
+
+                    b.ToTable("clients", (string)null);
+                });
+
             modelBuilder.Entity("CalendarManager.API.Data.Entities.Conversation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -146,6 +377,67 @@ namespace CalendarManager.API.Migrations
                     b.ToTable("oauth_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("CalendarManager.API.Data.Entities.Service", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BusinessProfileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("business_profile_id");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("color");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("description");
+
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_minutes");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("name");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("numeric")
+                        .HasColumnName("price");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BusinessProfileId");
+
+                    b.HasIndex("BusinessProfileId", "IsActive");
+
+                    b.ToTable("services", (string)null);
+                });
+
             modelBuilder.Entity("CalendarManager.API.Data.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -246,6 +538,55 @@ namespace CalendarManager.API.Migrations
                     b.ToTable("user_preferences", (string)null);
                 });
 
+            modelBuilder.Entity("CalendarManager.API.Data.Entities.AvailabilityRule", b =>
+                {
+                    b.HasOne("CalendarManager.API.Data.Entities.BusinessProfile", "BusinessProfile")
+                        .WithMany("AvailabilityRules")
+                        .HasForeignKey("BusinessProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BusinessProfile");
+                });
+
+            modelBuilder.Entity("CalendarManager.API.Data.Entities.Booking", b =>
+                {
+                    b.HasOne("CalendarManager.API.Data.Entities.BusinessProfile", "BusinessProfile")
+                        .WithMany("Bookings")
+                        .HasForeignKey("BusinessProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CalendarManager.API.Data.Entities.Client", "Client")
+                        .WithMany("Bookings")
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CalendarManager.API.Data.Entities.Service", "Service")
+                        .WithMany("Bookings")
+                        .HasForeignKey("ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("BusinessProfile");
+
+                    b.Navigation("Client");
+
+                    b.Navigation("Service");
+                });
+
+            modelBuilder.Entity("CalendarManager.API.Data.Entities.BusinessProfile", b =>
+                {
+                    b.HasOne("CalendarManager.API.Data.Entities.User", "User")
+                        .WithOne("BusinessProfile")
+                        .HasForeignKey("CalendarManager.API.Data.Entities.BusinessProfile", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("CalendarManager.API.Data.Entities.Conversation", b =>
                 {
                     b.HasOne("CalendarManager.API.Data.Entities.User", "User")
@@ -279,6 +620,17 @@ namespace CalendarManager.API.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("CalendarManager.API.Data.Entities.Service", b =>
+                {
+                    b.HasOne("CalendarManager.API.Data.Entities.BusinessProfile", "BusinessProfile")
+                        .WithMany("Services")
+                        .HasForeignKey("BusinessProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BusinessProfile");
+                });
+
             modelBuilder.Entity("CalendarManager.API.Data.Entities.UserPreferences", b =>
                 {
                     b.HasOne("CalendarManager.API.Data.Entities.User", "User")
@@ -290,13 +642,34 @@ namespace CalendarManager.API.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("CalendarManager.API.Data.Entities.BusinessProfile", b =>
+                {
+                    b.Navigation("AvailabilityRules");
+
+                    b.Navigation("Bookings");
+
+                    b.Navigation("Services");
+                });
+
+            modelBuilder.Entity("CalendarManager.API.Data.Entities.Client", b =>
+                {
+                    b.Navigation("Bookings");
+                });
+
             modelBuilder.Entity("CalendarManager.API.Data.Entities.Conversation", b =>
                 {
                     b.Navigation("Messages");
                 });
 
+            modelBuilder.Entity("CalendarManager.API.Data.Entities.Service", b =>
+                {
+                    b.Navigation("Bookings");
+                });
+
             modelBuilder.Entity("CalendarManager.API.Data.Entities.User", b =>
                 {
+                    b.Navigation("BusinessProfile");
+
                     b.Navigation("Conversations");
 
                     b.Navigation("OAuthTokens");

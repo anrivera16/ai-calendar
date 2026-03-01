@@ -1,0 +1,204 @@
+<div class="booking-container">
+  <!-- Header -->
+  <header class="booking-header">
+    <h1>{{ business?.businessName || 'Book an Appointment' }}</h1>
+    <p *ngIf="business?.description">{{ business?.description }}</p>
+  </header>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading-state">
+    <div class="spinner"></div>
+    <p>Loading...</p>
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="error && !loading" class="error-state">
+    <p>{{ error }}</p>
+    <button (click)="loadBusiness()">Try Again</button>
+  </div>
+
+  <!-- Booking Content -->
+  <div *ngIf="!loading && !error && business" class="booking-content">
+    <!-- Progress Steps -->
+    <div class="progress-steps">
+      <div class="step" [class.active]="stepIndex >= 0" [class.completed]="stepIndex > 0">
+        <span class="step-number">1</span>
+        <span class="step-label">Service</span>
+      </div>
+      <div class="step-line" [class.active]="stepIndex > 0"></div>
+      <div class="step" [class.active]="stepIndex >= 1" [class.completed]="stepIndex > 1">
+        <span class="step-number">2</span>
+        <span class="step-label">Date</span>
+      </div>
+      <div class="step-line" [class.active]="stepIndex > 1"></div>
+      <div class="step" [class.active]="stepIndex >= 2" [class.completed]="stepIndex > 2">
+        <span class="step-number">3</span>
+        <span class="step-label">Time</span>
+      </div>
+      <div class="step-line" [class.active]="stepIndex > 2"></div>
+      <div class="step" [class.active]="stepIndex >= 3" [class.completed]="stepIndex > 3">
+        <span class="step-number">4</span>
+        <span class="step-label">Details</span>
+      </div>
+    </div>
+
+    <!-- Step 1: Select Service -->
+    <div *ngIf="currentStep === 'service'" class="step-content">
+      <h2>Select a Service</h2>
+      <div class="services-grid">
+        <div
+          *ngFor="let service of business.services"
+          class="service-card"
+          (click)="selectService(service)"
+        >
+          <div class="service-color" [style.background-color]="service.color || '#4a90d9'"></div>
+          <div class="service-info">
+            <h3>{{ service.name }}</h3>
+            <p *ngIf="service.description">{{ service.description }}</p>
+            <div class="service-meta">
+              <span class="duration">{{ service.durationMinutes }} min</span>
+              <span *ngIf="service.price" class="price">${{ service.price }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Select Date -->
+    <div *ngIf="currentStep === 'date'" class="step-content">
+      <button class="back-btn" (click)="goBackToService()">← Back</button>
+      <h2>Select a Date</h2>
+      <div class="date-scroll-container">
+        <div class="date-list">
+          <button
+            *ngFor="let date of availableDates"
+            class="date-btn"
+            [class.selected]="selectedDate.toDateString() === date.toDateString()"
+            (click)="selectDate(date)"
+          >
+            <span class="day-name">{{ date | date:'EEE' }}</span>
+            <span class="day-number">{{ date | date:'d' }}</span>
+            <span class="month-name">{{ date | date:'MMM' }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Select Time -->
+    <div *ngIf="currentStep === 'time'" class="step-content">
+      <button class="back-btn" (click)="goBackToDate()">← Back</button>
+      <h2>Select a Time</h2>
+      <p class="selected-date">{{ formatDate(selectedDate) }}</p>
+
+      <div *ngIf="loadingSlots" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading available times...</p>
+      </div>
+
+      <div *ngIf="!loadingSlots && slots.length === 0" class="no-slots">
+        <p>No available times for this date. Please select another date.</p>
+        <button (click)="goBackToDate()">Choose Another Date</button>
+      </div>
+
+      <div *ngIf="!loadingSlots && slots.length > 0" class="slots-grid">
+        <button
+          *ngFor="let slot of slots"
+          class="slot-btn"
+          (click)="selectSlot(slot)"
+        >
+          {{ formatTime(slot.startTime) }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 4: Client Details -->
+    <div *ngIf="currentStep === 'details'" class="step-content">
+      <button class="back-btn" (click)="goBackToTime()">← Back</button>
+      <h2>Your Information</h2>
+
+      <div class="booking-summary">
+        <p><strong>Service:</strong> {{ selectedService?.name }}</p>
+        <p><strong>Date:</strong> {{ formatDate(selectedDate) }}</p>
+        <p><strong>Time:</strong> {{ selectedSlot ? formatTime(selectedSlot.startTime) : '' }}</p>
+        <p *ngIf="selectedService?.durationMinutes"><strong>Duration:</strong> {{ selectedService?.durationMinutes }} minutes</p>
+      </div>
+
+      <form class="client-form" (ngSubmit)="submitBooking()">
+        <div class="form-group">
+          <label for="name">Name *</label>
+          <input
+            type="text"
+            id="name"
+            [(ngModel)]="clientName"
+            name="clientName"
+            required
+            placeholder="Your full name"
+          />
+          <span class="error-message" *ngIf="nameError">{{ nameError }}</span>
+        </div>
+
+        <div class="form-group">
+          <label for="email">Email *</label>
+          <input
+            type="email"
+            id="email"
+            [(ngModel)]="clientEmail"
+            name="clientEmail"
+            required
+            placeholder="your@email.com"
+          />
+          <span class="error-message" *ngIf="emailError">{{ emailError }}</span>
+        </div>
+
+        <div class="form-group">
+          <label for="phone">Phone (optional)</label>
+          <input
+            type="tel"
+            id="phone"
+            [(ngModel)]="clientPhone"
+            name="clientPhone"
+            placeholder="(555) 123-4567"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="notes">Notes (optional)</label>
+          <textarea
+            id="notes"
+            [(ngModel)]="clientNotes"
+            name="clientNotes"
+            rows="3"
+            placeholder="Any special requests or information..."
+          ></textarea>
+        </div>
+
+        <button
+          type="submit"
+          class="submit-btn"
+          [disabled]="!canSubmit() || submitting"
+        >
+          {{ submitting ? 'Booking...' : 'Confirm Booking' }}
+        </button>
+      </form>
+    </div>
+
+    <!-- Step 5: Confirmation -->
+    <div *ngIf="currentStep === 'confirmation'" class="step-content confirmation">
+      <div class="success-icon">✓</div>
+      <h2>Booking Confirmed!</h2>
+      <p class="confirmation-message">{{ bookingResponse?.message }}</p>
+
+      <div class="confirmation-details">
+        <p><strong>Service:</strong> {{ bookingResponse?.booking?.serviceName }}</p>
+        <p><strong>Date & Time:</strong> {{ bookingResponse?.booking ? formatDateTime(bookingResponse?.booking?.startTime ?? '') : '' }}</p>
+        <p><strong>Confirmation #:</strong> {{ (bookingResponse?.booking?.id ?? '').slice(0, 8).toUpperCase() }}</p>
+      </div>
+
+      <div class="confirmation-actions">
+        <button class="primary-btn" (click)="router.navigate(['/'])">
+          Return Home
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

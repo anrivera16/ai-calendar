@@ -1,5 +1,6 @@
-import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable } from 'rxjs';
+import { Injectable, signal } from '@angular/core';
+import { Observable } from 'rxjs';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { CalendarService } from './calendar.service';
 import { ApiService } from './api';
 import { CreateEvent } from '../models/calendar.models';
@@ -16,7 +17,7 @@ export interface ChatMessage {
   providedIn: 'root'
 })
 export class AiChatService {
-  private messagesSubject = new BehaviorSubject<ChatMessage[]>([
+  private messagesSignal = signal<ChatMessage[]>([
     {
       id: '1',
       text: '👋 Hi! I\'m your AI calendar assistant. Try saying things like:\n\n• "Schedule a meeting with John tomorrow at 2pm"\n• "Show me my events for next week"\n• "Create a lunch appointment on Friday at noon"\n• "Cancel my 3pm meeting today"',
@@ -26,10 +27,12 @@ export class AiChatService {
     }
   ]);
   
-  public messages$ = this.messagesSubject.asObservable();
+  public readonly messages$ = toObservable(this.messagesSignal);
+  public readonly messages = this.messagesSignal.asReadonly();
 
-  private processingSubject = new BehaviorSubject<boolean>(false);
-  public processing$ = this.processingSubject.asObservable();
+  private processingSignal = signal<boolean>(false);
+  public readonly processing$ = toObservable(this.processingSignal);
+  public readonly processing = this.processingSignal.asReadonly();
 
   private conversationId: string | undefined;
 
@@ -48,12 +51,12 @@ export class AiChatService {
     };
     
     this.addMessage(userMessage);
-    this.processingSubject.next(true);
+    this.processingSignal.set(true);
 
     // Add a safety timeout to prevent infinite loading
     const safetyTimeout = setTimeout(() => {
-      if (this.processingSubject.value) {
-        this.processingSubject.next(false);
+      if (this.processingSignal()) {
+        this.processingSignal.set(false);
         const timeoutMessage: ChatMessage = {
           id: Date.now().toString(),
           text: `⏱️ **Request timed out**\n\nThe AI service is taking longer than expected. Please try your request again.`,
@@ -73,20 +76,19 @@ export class AiChatService {
           console.log('✅ Received backend response:', response);
           clearTimeout(safetyTimeout);
           this.handleBackendResponse(response);
-          this.processingSubject.next(false);
+          this.processingSignal.set(false);
         },
         error: (error) => {
           console.error('❌ Backend error:', error);
           clearTimeout(safetyTimeout);
           this.handleError(error);
-          this.processingSubject.next(false);
+          this.processingSignal.set(false);
         }
       });
   }
 
   private addMessage(message: ChatMessage): void {
-    const currentMessages = this.messagesSubject.value;
-    this.messagesSubject.next([...currentMessages, message]);
+    this.messagesSignal.update(messages => [...messages, message]);
   }
 
 
@@ -206,6 +208,6 @@ export class AiChatService {
   }
 
   clearChat(): void {
-    this.messagesSubject.next([]);
+    this.messagesSignal.set([]);
   }
 }

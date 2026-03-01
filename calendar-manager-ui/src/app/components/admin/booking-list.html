@@ -1,0 +1,123 @@
+<div class="booking-list-page">
+  <div class="page-header">
+    <a routerLink="/admin/dashboard" class="back-link">← Back to Dashboard</a>
+    <h1>Bookings</h1>
+    <p class="subtitle">View and manage all appointments</p>
+  </div>
+
+  @if (error) {
+    <div class="error-message">{{ error }}</div>
+  }
+
+  @if (success) {
+    <div class="success-message">{{ success }}</div>
+  }
+
+  <!-- Filters -->
+  <div class="filters">
+    <div class="filter-group">
+      <label>Status</label>
+      <select [(ngModel)]="statusFilter" (change)="applyFilters()">
+        @for (option of statusOptions; track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>From Date</label>
+      <input type="date" [(ngModel)]="dateFrom" (change)="applyFilters()" />
+    </div>
+    <div class="filter-group">
+      <label>To Date</label>
+      <input type="date" [(ngModel)]="dateTo" (change)="applyFilters()" />
+    </div>
+    <button class="btn btn-secondary" (click)="clearFilters()">Clear</button>
+  </div>
+
+  @if (loading) {
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Loading bookings...</p>
+    </div>
+  } @else if (bookings.length === 0) {
+    <div class="empty-state">
+      <div class="empty-icon">📅</div>
+      <h3>No bookings found</h3>
+      <p>Try adjusting your filters or check back later.</p>
+    </div>
+  } @else {
+    <div class="bookings-table">
+      <div class="table-header">
+        <div class="col-date">Date & Time</div>
+        <div class="col-client">Client</div>
+        <div class="col-service">Service</div>
+        <div class="col-status">Status</div>
+        <div class="col-actions">Actions</div>
+      </div>
+
+      @for (booking of bookings; track booking.id) {
+        <div class="table-row">
+          <div class="col-date">
+            <span class="date">{{ formatDate(booking.startTime) }}</span>
+            <span class="time">{{ formatTime(booking.startTime) }}</span>
+          </div>
+          <div class="col-client">
+            <span class="name">{{ booking.clientName }}</span>
+            <span class="email">{{ booking.clientEmail }}</span>
+            @if (booking.clientPhone) {
+              <span class="phone">{{ booking.clientPhone }}</span>
+            }
+          </div>
+          <div class="col-service">
+            <span class="service-badge" [style.background-color]="booking.serviceColor">
+              {{ booking.serviceName }}
+            </span>
+          </div>
+          <div class="col-status">
+            <span class="status-badge" [class]="booking.status.toLowerCase()">
+              {{ booking.status }}
+            </span>
+          </div>
+          <div class="col-actions">
+            @if (booking.status === 'Confirmed') {
+              <button
+                class="btn-icon"
+                (click)="completeBooking(booking.id)"
+                [disabled]="actionLoading === booking.id"
+                title="Mark as completed"
+              >
+                ✅
+              </button>
+              <button
+                class="btn-icon cancel"
+                (click)="confirmCancel(booking.id)"
+                [disabled]="actionLoading === booking.id"
+                title="Cancel booking"
+              >
+                ❌
+              </button>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Cancel Confirmation Modal -->
+  @if (showCancelConfirm) {
+    <div class="modal-overlay" (click)="cancelDelete()">
+      <div class="modal" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h2>Cancel Booking</h2>
+        </div>
+        <div class="modal-body">
+          <p>Are you sure you want to cancel this booking? This action cannot be undone.</p>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" (click)="cancelDelete()">No, Keep It</button>
+          <button class="btn btn-danger" (click)="cancelBooking()">Yes, Cancel</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

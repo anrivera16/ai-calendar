@@ -2,6 +2,7 @@ using Anthropic.SDK;
 using Anthropic.SDK.Constants;
 using Anthropic.SDK.Messaging;
 using CalendarManager.API.Data;
+using CalendarManager.API.Data.Entities;
 using CalendarManager.API.Models.DTOs;
 using CalendarManager.API.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,8 @@ using System.Text.Json;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using CommonTool = Anthropic.SDK.Common.Tool;
+using AnthropicMessage = Anthropic.SDK.Messaging.Message;
+using AnthropicRoleType = Anthropic.SDK.Messaging.RoleType;
 
 namespace CalendarManager.API.Services.Implementations;
 
@@ -16,11 +19,14 @@ public class ClaudeService : IClaudeService
 {
     private readonly AnthropicClient _anthropicClient;
     private readonly IGoogleCalendarService _calendarService;
+    private readonly IBookingService _bookingService;
+    private readonly IAvailabilityService _availabilityService;
     private readonly ILogger<ClaudeService> _logger;
     private readonly IConfiguration _configuration;
     private readonly AppDbContext _context;
     private string? _currentUserId;
     private Guid _currentUserDbId;
+    private Guid _currentBusinessProfileId;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -31,6 +37,8 @@ public class ClaudeService : IClaudeService
     public ClaudeService(
         IConfiguration configuration,
         IGoogleCalendarService calendarService,
+        IBookingService bookingService,
+        IAvailabilityService availabilityService,
         ILogger<ClaudeService> logger,
         AppDbContext context)
     {
@@ -42,6 +50,8 @@ public class ClaudeService : IClaudeService
 
         _anthropicClient = new AnthropicClient(apiKey);
         _calendarService = calendarService;
+        _bookingService = bookingService;
+        _availabilityService = availabilityService;
         _logger = logger;
         _configuration = configuration;
         _context = context;
@@ -138,7 +148,13 @@ public class ClaudeService : IClaudeService
             _currentUserId = userEmail;
             _currentUserDbId = userId;
             
-            _logger.LogInformation("Starting Claude API processing for user: {UserEmail}", userEmail);
+            // Get user's business profile
+            var businessProfile = await _context.BusinessProfiles
+                .FirstOrDefaultAsync(bp => bp.UserId == userId);
+            _currentBusinessProfileId = businessProfile?.Id ?? Guid.Empty;
+            
+            _logger.LogInformation("Starting Claude API processing for user: {UserEmail}, BusinessProfileId: {BusinessProfileId}", 
+                userEmail, _currentBusinessProfileId);
             
             // Use Claude API with tool calling
             var result = await CallClaudeAPIAsync(message);
@@ -161,9 +177,9 @@ public class ClaudeService : IClaudeService
         {
             _logger.LogInformation("Making Claude API call with tools for message: {Message}", userMessage);
             
-            var messages = new List<Message>()
+            var messages = new List<AnthropicMessage>()
             {
-                new Message(RoleType.User, userMessage)
+                new AnthropicMessage(AnthropicRoleType.User, userMessage)
             };
 
             var tools = GetCalendarTools();
@@ -196,7 +212,7 @@ public class ClaudeService : IClaudeService
                 _logger.LogInformation("Tool use loop iteration {Loop}", loopCount);
 
                 // Add assistant's response (with tool_use blocks) to conversation
-                messages.Add(new Message { Role = RoleType.Assistant, Content = response.Content });
+                messages.Add(new AnthropicMessage { Role = AnthropicRoleType.Assistant, Content = response.Content });
 
                 // Process each tool call in the response
                 var toolResults = new List<ContentBase>();
@@ -218,7 +234,7 @@ public class ClaudeService : IClaudeService
                 }
 
                 // Add tool results as a user message and call Claude again
-                messages.Add(new Message { Role = RoleType.User, Content = toolResults });
+                messages.Add(new AnthropicMessage { Role = AnthropicRoleType.User, Content = toolResults });
                 
                 parameters.Messages = messages;
                 response = await _anthropicClient.Messages.GetClaudeMessageAsync(parameters);
@@ -323,6 +339,36 @@ public class ClaudeService : IClaudeService
             },
             "Checks the user's availability (free/busy status) for a given time range. Use ISO 8601 format. Returns busy periods so you can identify free slots."
         ));
+        
+        // Tool 5: Check booking availability
+        tools.Add(CommonTool.FromFunc(
+            "check_booking_availability",
+            (string service_id, string date) =>
+            {
+                return "DEFERRED";
+            },
+            "Checks available time slots for booking a service on a specific date. Requires service_id and date in ISO 8601 format (e.g., '2026-02-23'). Returns available slots if any exist."
+        ));
+        
+        // Tool 6: View bookings
+        tools.Add(CommonTool.FromFunc(
+            "view_bookings",
+            (string? start_date, string? end_date, string? status) =>
+            {
+                return "DEFERRED";
+            },
+            "Views bookings for the business. Optional parameters: start_date, end_date (ISO 8601), and status (confirmed, cancelled, completed). If no status is provided, returns confirmed bookings by default."
+        ));
+        
+        // Tool 7: Cancel a booking
+        tools.Add(CommonTool.FromFunc(
+            "cancel_booking",
+            (string booking_id) =>
+            {
+                return "DEFERRED";
+            },
+            "Cancels a booking by its ID. You must first use view_bookings to get the booking ID. This action cannot be undone."
+        ));
 
         return tools;
     }
@@ -349,6 +395,15 @@ public class ClaudeService : IClaudeService
                     
                 case "get_free_busy":
                     return await ExecuteGetFreeBusyAsync(input, executedActions);
+                    
+                case "check_booking_availability":
+                    return await ExecuteCheckBookingAvailabilityAsync(input, executedActions);
+                    
+                case "view_bookings":
+                    return await ExecuteViewBookingsAsync(input, executedActions);
+                    
+                case "cancel_booking":
+                    return await ExecuteCancelBookingAsync(input, executedActions);
                     
                 default:
                     _logger.LogWarning("Unknown tool: {ToolName}", toolUse.Name);
@@ -553,6 +608,170 @@ public class ClaudeService : IClaudeService
             totalBusyPeriods = freeBusy.BusyPeriods.Count,
             dateRange = new { start = startDate, end = endDate }
         }, JsonOptions);
+    }
+    
+    private async Task<string> ExecuteCheckBookingAvailabilityAsync(JsonNode? input, List<CalendarAction> executedActions)
+    {
+        if (_currentBusinessProfileId == Guid.Empty)
+        {
+            return JsonSerializer.Serialize(new { error = "No business profile found for this user" }, JsonOptions);
+        }
+        
+        var serviceIdStr = input?["service_id"]?.GetValue<string>();
+        var dateStr = input?["date"]?.GetValue<string>();
+        
+        if (string.IsNullOrEmpty(serviceIdStr) || string.IsNullOrEmpty(dateStr))
+        {
+            return JsonSerializer.Serialize(new { error = "service_id and date are required" }, JsonOptions);
+        }
+        
+        if (!Guid.TryParse(serviceIdStr, out var serviceId))
+        {
+            return JsonSerializer.Serialize(new { error = "Invalid service_id format" }, JsonOptions);
+        }
+        
+        if (!DateTime.TryParse(dateStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+        {
+            return JsonSerializer.Serialize(new { error = $"Could not parse date: {dateStr}" }, JsonOptions);
+        }
+        
+        _logger.LogInformation("Checking booking availability for service {ServiceId} on {Date}", serviceId, date);
+        
+        var availableSlots = await _availabilityService.GetAvailableSlotsAsync(_currentBusinessProfileId, serviceId, date);
+        
+        var action = new CalendarAction
+        {
+            Type = "check_booking_availability",
+            Executed = true,
+            Result = $"Found {availableSlots.Count} available slots for {date:MM/dd/yyyy}"
+        };
+        executedActions.Add(action);
+        
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            serviceId = serviceId,
+            date = date,
+            availableSlots = availableSlots.Select(s => new
+            {
+                startTime = s.StartTime,
+                endTime = s.EndTime
+            }).ToList(),
+            totalSlots = availableSlots.Count
+        }, JsonOptions);
+    }
+    
+    private async Task<string> ExecuteViewBookingsAsync(JsonNode? input, List<CalendarAction> executedActions)
+    {
+        if (_currentBusinessProfileId == Guid.Empty)
+        {
+            return JsonSerializer.Serialize(new { error = "No business profile found for this user" }, JsonOptions);
+        }
+        
+        var startDateStr = input?["start_date"]?.GetValue<string>();
+        var endDateStr = input?["end_date"]?.GetValue<string>();
+        var statusStr = input?["status"]?.GetValue<string>();
+        
+        DateTime? startDate = null;
+        DateTime? endDate = null;
+        
+        if (!string.IsNullOrEmpty(startDateStr) && DateTime.TryParse(startDateStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedStart))
+        {
+            startDate = parsedStart;
+        }
+        if (!string.IsNullOrEmpty(endDateStr) && DateTime.TryParse(endDateStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedEnd))
+        {
+            endDate = parsedEnd;
+        }
+        
+        _logger.LogInformation("Viewing bookings for business {BusinessProfileId} from {Start} to {End}, status: {Status}", 
+            _currentBusinessProfileId, startDate, endDate, statusStr);
+        
+        var bookings = await _bookingService.GetBookingsAsync(_currentBusinessProfileId, startDate, endDate);
+        
+        // Filter by status if provided
+        if (!string.IsNullOrEmpty(statusStr) && Enum.TryParse<BookingStatus>(statusStr, true, out var status))
+        {
+            bookings = bookings.Where(b => b.Status == status).ToList();
+        }
+        
+        var action = new CalendarAction
+        {
+            Type = "view_bookings",
+            Executed = true,
+            Result = $"Found {bookings.Count} bookings"
+        };
+        executedActions.Add(action);
+        
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            bookings = bookings.Select(b => new
+            {
+                id = b.Id,
+                serviceName = b.Service?.Name,
+                clientName = b.Client?.Name,
+                clientEmail = b.Client?.Email,
+                startTime = b.StartTime,
+                endTime = b.EndTime,
+                status = b.Status.ToString(),
+                notes = b.Notes
+            }).ToList(),
+            totalBookings = bookings.Count
+        }, JsonOptions);
+    }
+    
+    private async Task<string> ExecuteCancelBookingAsync(JsonNode? input, List<CalendarAction> executedActions)
+    {
+        if (_currentBusinessProfileId == Guid.Empty)
+        {
+            return JsonSerializer.Serialize(new { error = "No business profile found for this user" }, JsonOptions);
+        }
+        
+        var bookingIdStr = input?["booking_id"]?.GetValue<string>();
+        
+        if (string.IsNullOrEmpty(bookingIdStr))
+        {
+            return JsonSerializer.Serialize(new { error = "booking_id is required" }, JsonOptions);
+        }
+        
+        if (!Guid.TryParse(bookingIdStr, out var bookingId))
+        {
+            return JsonSerializer.Serialize(new { error = "Invalid booking_id format" }, JsonOptions);
+        }
+        
+        _logger.LogInformation("Cancelling booking {BookingId} for business {BusinessProfileId}", bookingId, _currentBusinessProfileId);
+        
+        try
+        {
+            var cancelledBooking = await _bookingService.CancelBookingAsync(_currentBusinessProfileId, bookingId);
+            
+            var action = new CalendarAction
+            {
+                Type = "cancel_booking",
+                Executed = true,
+                Result = $"Cancelled booking for {cancelledBooking.Service?.Name} on {cancelledBooking.StartTime:MM/dd/yyyy}"
+            };
+            executedActions.Add(action);
+            
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                cancelledBooking = new
+                {
+                    id = cancelledBooking.Id,
+                    serviceName = cancelledBooking.Service?.Name,
+                    clientName = cancelledBooking.Client?.Name,
+                    startTime = cancelledBooking.StartTime,
+                    status = cancelledBooking.Status.ToString()
+                },
+                message = "Booking successfully cancelled"
+            }, JsonOptions);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+        }
     }
 
     private string ProcessIntelligentFallback(string message)
@@ -763,13 +982,20 @@ public class ClaudeService : IClaudeService
 
     private string GetSystemPrompt()
     {
-        return @"You are an AI calendar assistant that helps users manage their Google Calendar through natural language.
+        return @"You are an AI calendar assistant that helps business owners manage their Google Calendar AND their booking platform through natural language.
 
-You have access to the following tools to interact with the user's Google Calendar:
-- create_calendar_event: Create new events
+## Your Capabilities
+
+### Google Calendar Tools:
+- create_calendar_event: Create new calendar events
 - list_calendar_events: View existing events  
 - delete_calendar_event: Remove events (requires event ID — list events first)
 - get_free_busy: Check availability
+
+### Booking Management Tools (for business owners):
+- check_booking_availability: Check available time slots for booking a service on a specific date
+- view_bookings: View all bookings for the business, optionally filtered by date range and status
+- cancel_booking: Cancel a booking by its ID (requires booking ID — view bookings first)
 
 IMPORTANT RULES:
 1. Current date and time: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss (dddd)") + @"
@@ -777,12 +1003,16 @@ IMPORTANT RULES:
 3. When the user asks to see/view/show events, USE the list_calendar_events tool. Do NOT tell them to check their calendar manually.
 4. When the user asks about availability or free time, USE the get_free_busy tool.
 5. When the user asks to cancel/delete an event, first USE list_calendar_events to find the event ID, then USE delete_calendar_event.
-6. Parse natural language dates relative to the current date above. 'Tomorrow' means " + DateTime.Now.AddDays(1).ToString("yyyy-MM-dd") + @". 'Next Monday' means the coming Monday, etc.
-7. Default event duration is 1 hour if not specified.
-8. Use ISO 8601 format for all dates/times passed to tools.
-9. After executing a tool, summarize what you did in a friendly, concise way.
-10. If a tool call fails, explain the error clearly and suggest alternatives.
-11. Be conversational but efficient. Don't over-explain — just do what the user asks.";
+6. When the user asks about bookings (e.g., 'show me bookings', 'what appointments do I have', 'view reservations'), USE the view_bookings tool.
+7. When the user asks about available slots for clients, USE check_booking_availability.
+8. When the user asks to cancel a booking/appointment, first USE view_bookings to find the booking ID, then USE cancel_booking.
+9. Parse natural language dates relative to the current date above. 'Tomorrow' means " + DateTime.Now.AddDays(1).ToString("yyyy-MM-dd") + @". 'Next Monday' means the coming Monday, etc.
+10. Default event duration is 1 hour if not specified.
+11. Use ISO 8601 format for all dates/times passed to tools.
+12. After executing a tool, summarize what you did in a friendly, concise way.
+13. If a tool call fails, explain the error clearly and suggest alternatives.
+14. Be conversational but efficient. Don't over-explain — just do what the user asks.
+15. When discussing bookings, mention the client name, service, date, time, and status (confirmed, cancelled, completed).";
     }
 
     // Implementation of interface methods

@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, input, output, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CalendarEvent } from '../../../models/calendar.models';
 
@@ -17,47 +17,42 @@ export interface CalendarDay {
   templateUrl: './calendar-view.html',
   styleUrl: './calendar-view.scss',
 })
-export class CalendarViewComponent implements OnChanges {
-  @Input() events: CalendarEvent[] = [];
-  @Input() highlightedEventId: string | null = null;
-  @Input() loading: boolean = false;
-  @Output() daySelected = new EventEmitter<Date>();
-  @Output() eventSelected = new EventEmitter<CalendarEvent>();
+export class CalendarViewComponent {
+  events = input<CalendarEvent[]>([]);
+  highlightedEventId = input<string | null>(null);
+  loading = input<boolean>(false);
+  daySelected = output<Date>();
+  eventSelected = output<CalendarEvent>();
 
-  currentMonth: Date = new Date();
-  calendarDays: CalendarDay[] = [];
+  currentMonth = signal(new Date());
+  selectedDay = signal<Date | null>(null);
+  today = new Date();
   weekDays: string[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  selectedDay: Date | null = null;
-  today: Date = new Date();
 
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['events'] || changes['currentMonth']) {
-      this.generateCalendar();
-    }
-  }
+  calendarDays = computed(() => this.generateCalendarDays());
 
-  generateCalendar(): void {
-    const year = this.currentMonth.getFullYear();
-    const month = this.currentMonth.getMonth();
+  private generateCalendarDays(): CalendarDay[] {
+    const month = this.currentMonth();
+    const year = month.getFullYear();
+    const monthIndex = month.getMonth();
 
-    const firstDayOfMonth = new Date(year, month, 1);
-    const lastDayOfMonth = new Date(year, month + 1, 0);
+    const firstDayOfMonth = new Date(year, monthIndex, 1);
+    const lastDayOfMonth = new Date(year, monthIndex + 1, 0);
     const startingDayOfWeek = firstDayOfMonth.getDay();
     const daysInMonth = lastDayOfMonth.getDate();
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    this.calendarDays = [];
+    const days: CalendarDay[] = [];
 
-    // Previous month days
-    const prevMonth = new Date(year, month, 0);
+    const prevMonth = new Date(year, monthIndex, 0);
     const daysInPrevMonth = prevMonth.getDate();
 
     for (let i = startingDayOfWeek - 1; i >= 0; i--) {
       const dayNumber = daysInPrevMonth - i;
-      const date = new Date(year, month - 1, dayNumber);
-      this.calendarDays.push({
+      const date = new Date(year, monthIndex - 1, dayNumber);
+      days.push({
         date,
         dayNumber,
         isCurrentMonth: false,
@@ -66,13 +61,12 @@ export class CalendarViewComponent implements OnChanges {
       });
     }
 
-    // Current month days
     for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month, day);
+      const date = new Date(year, monthIndex, day);
       const dateOnly = new Date(date);
       dateOnly.setHours(0, 0, 0, 0);
 
-      this.calendarDays.push({
+      days.push({
         date,
         dayNumber: day,
         isCurrentMonth: true,
@@ -81,11 +75,10 @@ export class CalendarViewComponent implements OnChanges {
       });
     }
 
-    // Next month days to fill the grid (6 rows)
-    const remainingDays = 42 - this.calendarDays.length;
+    const remainingDays = 42 - days.length;
     for (let day = 1; day <= remainingDays; day++) {
-      const date = new Date(year, month + 1, day);
-      this.calendarDays.push({
+      const date = new Date(year, monthIndex + 1, day);
+      days.push({
         date,
         dayNumber: day,
         isCurrentMonth: false,
@@ -93,13 +86,15 @@ export class CalendarViewComponent implements OnChanges {
         events: this.getEventsForDate(date),
       });
     }
+
+    return days;
   }
 
   getEventsForDate(date: Date): CalendarEvent[] {
     const dateOnly = new Date(date);
     dateOnly.setHours(0, 0, 0, 0);
 
-    return this.events.filter((event) => {
+    return this.events().filter((event) => {
       const eventStart = new Date(event.start);
       eventStart.setHours(0, 0, 0, 0);
       return eventStart.getTime() === dateOnly.getTime();
@@ -107,30 +102,21 @@ export class CalendarViewComponent implements OnChanges {
   }
 
   previousMonth(): void {
-    this.currentMonth = new Date(
-      this.currentMonth.getFullYear(),
-      this.currentMonth.getMonth() - 1,
-      1
-    );
-    this.generateCalendar();
+    const current = this.currentMonth();
+    this.currentMonth.set(new Date(current.getFullYear(), current.getMonth() - 1, 1));
   }
 
   nextMonth(): void {
-    this.currentMonth = new Date(
-      this.currentMonth.getFullYear(),
-      this.currentMonth.getMonth() + 1,
-      1
-    );
-    this.generateCalendar();
+    const current = this.currentMonth();
+    this.currentMonth.set(new Date(current.getFullYear(), current.getMonth() + 1, 1));
   }
 
   goToToday(): void {
-    this.currentMonth = new Date();
-    this.generateCalendar();
+    this.currentMonth.set(new Date());
   }
 
   onDayClick(day: CalendarDay): void {
-    this.selectedDay = day.date;
+    this.selectedDay.set(day.date);
     this.daySelected.emit(day.date);
   }
 
@@ -140,14 +126,14 @@ export class CalendarViewComponent implements OnChanges {
   }
 
   getMonthYear(): string {
-    return this.currentMonth.toLocaleDateString('en-US', {
+    return this.currentMonth().toLocaleDateString('en-US', {
       month: 'long',
       year: 'numeric',
     });
   }
 
   isEventHighlighted(event: CalendarEvent): boolean {
-    return this.highlightedEventId === event.id;
+    return this.highlightedEventId() === event.id;
   }
 
   formatEventTime(event: CalendarEvent): string {

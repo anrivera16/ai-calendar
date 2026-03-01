@@ -2,6 +2,7 @@ using CalendarManager.API.Data;
 using CalendarManager.API.Services.Interfaces;
 using CalendarManager.API.Services.Implementations;
 using Microsoft.EntityFrameworkCore;
+using AspNetCoreRateLimit;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +16,15 @@ var encryptionKey = Environment.GetEnvironmentVariable("ENCRYPTION_KEY");
 var redirectUri = Environment.GetEnvironmentVariable("GOOGLE_REDIRECT_URI");
 var claudeApiKey = Environment.GetEnvironmentVariable("CLAUDE_API_KEY");
 
+// Email configuration from environment variables
+var emailEnabled = Environment.GetEnvironmentVariable("EMAIL_ENABLED");
+var smtpHost = Environment.GetEnvironmentVariable("SMTP_HOST");
+var smtpPort = Environment.GetEnvironmentVariable("SMTP_PORT");
+var smtpUsername = Environment.GetEnvironmentVariable("SMTP_USERNAME");
+var smtpPassword = Environment.GetEnvironmentVariable("SMTP_PASSWORD");
+var emailFromAddress = Environment.GetEnvironmentVariable("EMAIL_FROM_ADDRESS");
+var emailFromName = Environment.GetEnvironmentVariable("EMAIL_FROM_NAME");
+
 if (!string.IsNullOrEmpty(googleClientId))
     builder.Configuration["Authentication:Google:ClientId"] = googleClientId;
 if (!string.IsNullOrEmpty(googleClientSecret))
@@ -26,8 +36,55 @@ if (!string.IsNullOrEmpty(redirectUri))
 if (!string.IsNullOrEmpty(claudeApiKey))
     builder.Configuration["Claude:ApiKey"] = claudeApiKey;
 
+// Override email config from environment variables
+if (!string.IsNullOrEmpty(emailEnabled))
+    builder.Configuration["Email:Enabled"] = emailEnabled;
+if (!string.IsNullOrEmpty(smtpHost))
+    builder.Configuration["Email:Smtp:Host"] = smtpHost;
+if (!string.IsNullOrEmpty(smtpPort))
+    builder.Configuration["Email:Smtp:Port"] = smtpPort;
+if (!string.IsNullOrEmpty(smtpUsername))
+    builder.Configuration["Email:Smtp:Username"] = smtpUsername;
+if (!string.IsNullOrEmpty(smtpPassword))
+    builder.Configuration["Email:Smtp:Password"] = smtpPassword;
+if (!string.IsNullOrEmpty(emailFromAddress))
+    builder.Configuration["Email:From:Address"] = emailFromAddress;
+if (!string.IsNullOrEmpty(emailFromName))
+    builder.Configuration["Email:From:Name"] = emailFromName;
+
+// Demo mode configuration - set to false to block admin access in production
+var demoMode = Environment.GetEnvironmentVariable("DEMO_MODE");
+if (!string.IsNullOrEmpty(demoMode))
+    builder.Configuration["DemoMode"] = demoMode;
+
 // Add services to the container.
 builder.Services.AddControllers();
+
+// Rate limiting configuration
+builder.Services.AddMemoryCache();
+builder.Services.Configure<IpRateLimitOptions>(options =>
+{
+    options.GeneralRules = new List<RateLimitRule>
+    {
+        new RateLimitRule
+        {
+            Endpoint = "*",
+            Period = "1m",
+            Limit = 30,
+        },
+        new RateLimitRule
+        {
+            Endpoint = "POST:/api/book/*",
+            Period = "5m",
+            Limit = 10,
+        }
+    };
+});
+builder.Services.AddSingleton<IRateLimitCounterStore, MemoryCacheRateLimitCounterStore>();
+builder.Services.AddSingleton<IIpPolicyStore, MemoryCacheIpPolicyStore>();
+builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
+builder.Services.AddSingleton<IProcessingStrategy, AsyncKeyLockProcessingStrategy>();
+builder.Services.AddInMemoryRateLimiting();
 
 // CORS configuration
 builder.Services.AddCors(options =>
@@ -61,8 +118,6 @@ if (string.IsNullOrEmpty(connectionString))
     throw new InvalidOperationException("Database connection string not found. Set ConnectionStrings:DefaultConnection in appsettings.json or DATABASE_URL environment variable.");
 }
 
-Console.WriteLine($"[DEBUG] Using connection string: {connectionString}");
-
 // Parse DATABASE_URL format for cloud providers like Heroku/Railway
 if (connectionString.StartsWith("postgres://") || connectionString.StartsWith("postgresql://"))
 {
@@ -70,7 +125,7 @@ if (connectionString.StartsWith("postgres://") || connectionString.StartsWith("p
     var userInfo = uri.UserInfo.Split(':');
     connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]}";
     
-    Console.WriteLine($"[DEBUG] Converted connection string: {connectionString}");
+    Console.WriteLine("[DEBUG] Converted DATABASE_URL to standard connection string format");
 }
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -84,6 +139,9 @@ builder.Services.AddScoped<ITokenEncryptionService, TokenEncryptionService>();
 builder.Services.AddScoped<IOAuthService, OAuthService>();
 builder.Services.AddScoped<IGoogleCalendarService, GoogleCalendarService>();
 builder.Services.AddScoped<IClaudeService, ClaudeService>();
+builder.Services.AddScoped<IAvailabilityService, AvailabilityService>();
+builder.Services.AddScoped<IBookingService, BookingService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // Add health checks
 builder.Services.AddHealthChecks()
@@ -113,6 +171,9 @@ app.UseHttpsRedirection();
 
 // Use CORS
 app.UseCors("AllowSpecificOrigins");
+
+// Use rate limiting
+app.UseIpRateLimiting();
 
 app.UseRouting();
 

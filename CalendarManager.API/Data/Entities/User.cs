@@ -24,4 +24,5 @@ public class User
     public virtual ICollection<OAuthToken> OAuthTokens { get; set; } = new List<OAuthToken>();
     public virtual UserPreferences? UserPreferences { get; set; }
     public virtual ICollection<Conversation> Conversations { get; set; } = new List<Conversation>();
+    public virtual BusinessProfile? BusinessProfile { get; set; }
 }

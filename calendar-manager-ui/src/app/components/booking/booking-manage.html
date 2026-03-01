@@ -1,0 +1,58 @@
+<div class="manage-container">
+  <h1>Manage Your Booking</h1>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading-state">
+    <div class="spinner"></div>
+    <p>Loading booking details...</p>
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="error && !loading" class="error-state">
+    <p>{{ error }}</p>
+    <button (click)="loadBooking()">Try Again</button>
+  </div>
+
+  <!-- Booking Details -->
+  <div *ngIf="!loading && !error && booking" class="booking-details">
+    <div class="status-banner" [ngClass]="getStatusClass(booking.booking.status)">
+      {{ booking.booking.status }}
+    </div>
+
+    <div class="booking-info">
+      <h2>{{ booking.booking.serviceName }}</h2>
+      <p class="datetime">{{ formatDateTime(booking.booking.startTime) }}</p>
+
+      <div class="client-info">
+        <h3>Your Information</h3>
+        <p><strong>Name:</strong> {{ booking.booking.client.name }}</p>
+        <p><strong>Email:</strong> {{ booking.booking.client.email }}</p>
+        <p *ngIf="booking.booking.client.phone"><strong>Phone:</strong> {{ booking.booking.client.phone }}</p>
+        <p *ngIf="booking.booking.notes"><strong>Notes:</strong> {{ booking.booking.notes }}</p>
+      </div>
+
+      <div class="business-info" *ngIf="booking.business">
+        <h3>{{ booking.business.name }}</h3>
+        <p *ngIf="booking.business.phone"><strong>Phone:</strong> {{ booking.business.phone }}</p>
+        <p *ngIf="booking.business.address"><strong>Address:</strong> {{ booking.business.address }}</p>
+      </div>
+
+      <!-- Cancel Button -->
+      <div *ngIf="!cancelSuccess && booking.booking.status !== 'Cancelled'" class="actions">
+        <button class="cancel-btn" (click)="cancelBooking()" [disabled]="cancelling">
+          {{ cancelling ? 'Cancelling...' : 'Cancel Booking' }}
+        </button>
+      </div>
+
+      <!-- Cancel Success Message -->
+      <div *ngIf="cancelSuccess" class="success-message">
+        <p>Your booking has been cancelled successfully.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Back to Home -->
+  <div class="footer-links">
+    <a routerLink="/">Return to Home</a>
+  </div>
+</div>

@@ -1,5 +1,6 @@
-import { Injectable } from '@angular/core';
-import { Observable, BehaviorSubject } from 'rxjs';
+import { Injectable, signal } from '@angular/core';
+import { Observable } from 'rxjs';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { ApiService } from './api';
 import { CalendarEvent, CreateEvent, UpdateEvent } from '../models/calendar.models';
 
@@ -7,16 +8,18 @@ import { CalendarEvent, CreateEvent, UpdateEvent } from '../models/calendar.mode
   providedIn: 'root'
 })
 export class CalendarService {
-  private eventsSubject = new BehaviorSubject<CalendarEvent[]>([]);
-  public events$ = this.eventsSubject.asObservable();
+  private eventsSignal = signal<CalendarEvent[]>([]);
+  public readonly events$ = toObservable(this.eventsSignal);
+  public readonly events = this.eventsSignal.asReadonly();
 
-  private loadingSubject = new BehaviorSubject<boolean>(false);
-  public loading$ = this.loadingSubject.asObservable();
+  private loadingSignal = signal<boolean>(false);
+  public readonly loading$ = toObservable(this.loadingSignal);
+  public readonly loading = this.loadingSignal.asReadonly();
 
   constructor(private apiService: ApiService) { }
 
   loadEvents(start?: string, end?: string): void {
-    this.loadingSubject.next(true);
+    this.loadingSignal.set(true);
 
     // Default to current month if no dates provided
     if (!start || !end) {
@@ -28,32 +31,31 @@ export class CalendarService {
     this.apiService.getCalendarEvents(start, end).subscribe({
       next: (events) => {
         console.log('Loaded events:', events.length, 'from', start, 'to', end);
-        this.eventsSubject.next(events);
-        this.loadingSubject.next(false);
+        this.eventsSignal.set(events);
+        this.loadingSignal.set(false);
       },
       error: (error) => {
         console.error('Failed to load calendar events:', error);
-        this.loadingSubject.next(false);
+        this.loadingSignal.set(false);
         // Keep existing events on error
       }
     });
   }
 
   createEvent(event: CreateEvent): Observable<CalendarEvent> {
-    this.loadingSubject.next(true);
+    this.loadingSignal.set(true);
 
     return new Observable(observer => {
       this.apiService.createCalendarEvent(event).subscribe({
         next: (newEvent) => {
           // Add the new event to current events
-          const currentEvents = this.eventsSubject.value;
-          this.eventsSubject.next([...currentEvents, newEvent]);
-          this.loadingSubject.next(false);
+          this.eventsSignal.update(events => [...events, newEvent]);
+          this.loadingSignal.set(false);
           observer.next(newEvent);
           observer.complete();
         },
         error: (error) => {
-          this.loadingSubject.next(false);
+          this.loadingSignal.set(false);
           observer.error(error);
         }
       });
@@ -61,24 +63,27 @@ export class CalendarService {
   }
 
   updateEvent(eventId: string, event: UpdateEvent): Observable<CalendarEvent> {
-    this.loadingSubject.next(true);
+    this.loadingSignal.set(true);
 
     return new Observable(observer => {
       this.apiService.updateCalendarEvent(eventId, event).subscribe({
         next: (updatedEvent) => {
           // Update the event in current events
-          const currentEvents = this.eventsSubject.value;
-          const index = currentEvents.findIndex(e => e.id === eventId);
-          if (index !== -1) {
-            currentEvents[index] = updatedEvent;
-            this.eventsSubject.next([...currentEvents]);
-          }
-          this.loadingSubject.next(false);
+          this.eventsSignal.update(events => {
+            const index = events.findIndex(e => e.id === eventId);
+            if (index !== -1) {
+              const updated = [...events];
+              updated[index] = updatedEvent;
+              return updated;
+            }
+            return events;
+          });
+          this.loadingSignal.set(false);
           observer.next(updatedEvent);
           observer.complete();
         },
         error: (error) => {
-          this.loadingSubject.next(false);
+          this.loadingSignal.set(false);
           observer.error(error);
         }
       });
@@ -86,21 +91,19 @@ export class CalendarService {
   }
 
   deleteEvent(eventId: string): Observable<void> {
-    this.loadingSubject.next(true);
+    this.loadingSignal.set(true);
 
     return new Observable(observer => {
       this.apiService.deleteCalendarEvent(eventId).subscribe({
         next: () => {
           // Remove the event from current events
-          const currentEvents = this.eventsSubject.value;
-          const filteredEvents = currentEvents.filter(e => e.id !== eventId);
-          this.eventsSubject.next(filteredEvents);
-          this.loadingSubject.next(false);
+          this.eventsSignal.update(events => events.filter(e => e.id !== eventId));
+          this.loadingSignal.set(false);
           observer.next();
           observer.complete();
         },
         error: (error) => {
-          this.loadingSubject.next(false);
+          this.loadingSignal.set(false);
           observer.error(error);
         }
       });

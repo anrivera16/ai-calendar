@@ -1,0 +1,9 @@
+{
+  "businessName": "Test Business",
+  "slug": "test-business",
+  "description": "A test business for e2e testing",
+  "timezone": "America/New_York",
+  "email": "contact@testbusiness.com",
+  "phone": "+1-555-123-4567",
+  "address": "123 Test Street, Test City, TC 12345"
+}

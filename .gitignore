@@ -16,7 +16,9 @@ api-test.log
 *.sqlite
 *.sqlite3
 
-# This line was moved up to Environment files section
+# Test artifacts
+test-results/
+playwright-report/
 
 # Docker
 docker-compose.override.yml
@@ -32,6 +34,7 @@ vaults/
 
 # Kilo Code agent configuration files
 .kilocode/
+.kilocodemodes
 AGENTS.md
 
 # OS

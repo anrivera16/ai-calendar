@@ -1,352 +1,343 @@
-# 🗓️ AI Calendar Manager
+# AI Calendar Manager
 
-A production-ready AI-powered calendar assistant that uses Claude AI and natural language processing to intelligently manage your Google Calendar. Built with .NET 8 Web API, Angular 17+, and Claude 3.5 Sonnet for sophisticated calendar operations.
+A B2B scheduling platform that lets businesses offer self-service appointment booking to their clients. Built with .NET 8, Angular 21, PostgreSQL, Google Calendar API, and Claude AI.
 
-## ✨ Features
+**What it does:** Business owners connect their Google Calendar, define their services and availability, then share a booking link. Clients visit the link, pick a service, choose an available time slot, and book — no calls or emails needed. An AI chat assistant helps both sides manage scheduling through natural language.
 
-- 🤖 **Claude AI Integration** - Advanced natural language understanding for complex scheduling requests
-- 🔐 **Secure Google OAuth** - Industry-standard authentication with encrypted token storage
-- 💬 **Conversational Interface** - Multi-turn conversations with context awareness
-- 📅 **Smart Calendar Operations** - Create, view, and manage events through natural language
-- ⚡ **Real-time Processing** - Instant responses with proper error handling
-- 🔒 **Enterprise Security** - PKCE OAuth flow, encrypted tokens, input validation
-- 🎯 **Intelligent Parsing** - Understands complex time expressions and scheduling preferences
-
-## 🏗️ Architecture
+## Architecture
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Angular 17+   │◄──►│  .NET 8 Web API  │◄──►│  Google Calendar│
-│   Frontend      │    │     Backend      │    │      API        │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-         │                       │                       
-         │                       ▼                       
-         │              ┌──────────────────┐             
-         │              │   Claude 3.5     │             
-         └──────────────│   Sonnet API     │             
-                        └──────────────────┘             
-                                 │                        
-                                 ▼                        
-                        ┌──────────────────┐             
-                        │   PostgreSQL     │             
-                        │    Database      │             
-                        └──────────────────┘             
+                          ┌──────────────────┐
+                          │  Google Calendar  │
+                          │       API         │
+                          └────────▲─────────┘
+                                   │
+┌─────────────────┐    ┌───────────┴────────┐    ┌──────────────┐
+│   Angular 21    │◄──►│  .NET 8 Web API    │◄──►│  PostgreSQL  │
+│   Frontend      │    │     Backend        │    │   Database   │
+└─────────────────┘    └───────────▲────────┘    └──────────────┘
+                                   │
+                        ┌──────────┴──────────┐
+                        │  Claude AI    SMTP  │
+                        │  (Anthropic)  Email │
+                        └─────────────────────┘
 ```
 
-## 🚀 Quick Start
+**Two user-facing sides:**
+- **Admin dashboard** (`/admin/*`) — Business owner configures services, availability, and manages bookings
+- **Public booking page** (`/book/{slug}`) — Clients self-schedule appointments, no account needed
+
+## Features
+
+### For Business Owners
+- Connect Google Calendar via OAuth
+- Set up business profile with shareable booking link
+- Define services (name, duration, price, color)
+- Configure weekly availability, breaks, and date overrides (holidays, days off)
+- View and manage all bookings (filter by date/status, cancel, mark complete)
+- AI chat assistant to manage calendar and bookings via natural language
+- Email notifications when clients book or cancel
+
+### For Clients
+- Browse available services on the business's booking page
+- Pick a date and see real-time available time slots
+- Book in seconds — name, email, phone, done
+- Receive confirmation email with booking details
+- Cancel or view booking via a unique management link (no login required)
+- Mobile-friendly booking experience
+
+### AI Chat (Claude)
+- Natural language calendar management ("Schedule lunch tomorrow at 1pm")
+- Check booking availability for services
+- View upcoming bookings and appointments
+- Cancel bookings through conversation
+- Smart tool calling with Google Calendar integration
+
+## Quick Start
 
 ### Prerequisites
 - .NET 8 SDK
 - Node.js 18+
 - PostgreSQL (or Docker)
-- Google Cloud Console account
+- Google Cloud Console project (Calendar API + OAuth credentials)
 - Claude API key (Anthropic)
 
-### 1. Clone and Setup Environment
+### 1. Clone and Configure
 
 ```bash
 git clone <repository-url>
 cd ai-calendar
-
-# Setup environment variables
 cp .env.example .env
 # Edit .env with your API keys and database credentials
 ```
 
-### 2. Database Setup
+### 2. Database
 
 ```bash
-# Option A: Docker (Recommended)
+# Docker (recommended)
 docker-compose up postgres -d
 
-# Option B: Local PostgreSQL
-# Make sure PostgreSQL is running on localhost:5432
+# Or use a local PostgreSQL instance on localhost:5432
 ```
 
-### 3. Backend Setup
+### 3. Backend
 
 ```bash
 cd CalendarManager.API
-
-# Restore dependencies
 dotnet restore
-
-# Set environment variables (replace with your keys)
-export GOOGLE_CLIENT_ID="your-google-client-id"
-export GOOGLE_CLIENT_SECRET="your-google-client-secret"
-export CLAUDE_API_KEY="your-claude-api-key"
-export ENCRYPTION_KEY="your-base64-encryption-key"
-
-# Run migrations and start API
 dotnet run
+# Database migrations run automatically on startup
 ```
 
-### 4. Frontend Setup
+### 4. Frontend
 
 ```bash
 cd calendar-manager-ui
-
-# Install dependencies
 npm install
-
-# Start development server
 ng serve
 ```
 
 ### 5. Google OAuth Setup
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create a new project or select existing
-3. Enable Google Calendar API
-4. Create OAuth 2.0 credentials
-5. Add redirect URIs:
-   - `http://localhost:5047/api/auth/callback` (for development)
-   - `http://localhost:4200/?auth=success` (for frontend redirect)
+2. Enable Google Calendar API
+3. Create OAuth 2.0 credentials
+4. Add redirect URI: `http://localhost:5047/api/auth/callback`
 
-### 6. Access Your Application
+### 6. Email Setup (Optional)
+
+Configure SMTP in `appsettings.json` or environment variables to enable booking confirmation and notification emails. When disabled, emails are logged but not sent.
+
+### 7. Access
 
 - **Frontend**: http://localhost:4200
 - **API**: http://localhost:5047
 - **Swagger**: http://localhost:5047/swagger
 
-## 🎯 Usage Examples
-
-Once authenticated, try these natural language commands:
-
-```
-"Schedule lunch with Sarah tomorrow at 1pm"
-→ Creates calendar event for tomorrow 1:00-2:00 PM
-
-"What's on my calendar today?"
-→ Lists all events for current day
-
-"Find me 2 hours next week to work on the project"
-→ Suggests available time slots
-
-"Move my 3pm meeting to 4pm"
-→ Updates existing event time
-
-"Cancel all meetings on Friday"
-→ Removes Friday events (with confirmation)
-```
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 ai-calendar/
-├── CalendarManager.API/           # .NET 8 Web API Backend
-│   ├── Controllers/               # API endpoints
-│   │   ├── AuthController.cs      # OAuth authentication
-│   │   ├── ChatController.cs      # Claude AI chat interface
-│   │   └── TestController.cs      # Health checks
-│   ├── Services/                  # Business logic
-│   │   ├── Interfaces/            # Service contracts
-│   │   └── Implementations/       # Service implementations
-│   │       ├── ClaudeService.cs   # Claude AI integration
-│   │       ├── GoogleCalendarService.cs
-│   │       ├── OAuthService.cs    # OAuth flow management
-│   │       └── TokenEncryptionService.cs
-│   ├── Data/                      # Database context & entities
-│   ├── Models/DTOs/               # Data transfer objects
-│   └── Migrations/                # EF Core migrations
-├── calendar-manager-ui/           # Angular 17+ Frontend
+├── CalendarManager.API/              # .NET 8 Web API Backend
+│   ├── Controllers/
+│   │   ├── AuthController.cs         # Google OAuth (PKCE)
+│   │   ├── ChatController.cs         # Claude AI chat
+│   │   ├── CalendarController.cs     # Calendar CRUD
+│   │   ├── AdminController.cs        # Business admin (profile, services, availability, bookings)
+│   │   ├── PublicBookingController.cs # Client booking (public, no auth)
+│   │   └── TestController.cs         # Health checks
+│   ├── Services/
+│   │   ├── Implementations/
+│   │   │   ├── ClaudeService.cs      # AI with tool calling (calendar + booking tools)
+│   │   │   ├── GoogleCalendarService.cs
+│   │   │   ├── OAuthService.cs       # OAuth 2.0 + PKCE
+│   │   │   ├── TokenEncryptionService.cs # AES-256-GCM
+│   │   │   ├── AvailabilityService.cs # Slot calculation engine
+│   │   │   ├── BookingService.cs     # Booking lifecycle management
+│   │   │   └── EmailService.cs       # SMTP notifications (MailKit)
+│   │   └── Interfaces/              # Service contracts
+│   ├── Data/
+│   │   ├── AppDbContext.cs           # EF Core context
+│   │   └── Entities/                 # 10 entity classes
+│   │       ├── User.cs
+│   │       ├── OAuthToken.cs
+│   │       ├── UserPreferences.cs
+│   │       ├── Conversation.cs
+│   │       ├── Message.cs
+│   │       ├── BusinessProfile.cs
+│   │       ├── Service.cs
+│   │       ├── AvailabilityRule.cs
+│   │       ├── Client.cs
+│   │       └── Booking.cs
+│   ├── Models/DTOs/                  # Data transfer objects
+│   └── Migrations/                   # EF Core migrations
+├── calendar-manager-ui/              # Angular 21 Frontend
 │   └── src/app/
-│       ├── components/            # UI components
-│       │   ├── dashboard/         # Main dashboard
-│       │   └── login/             # Authentication UI
-│       ├── services/              # Angular services
-│       │   ├── api.ts             # HTTP API client
-│       │   ├── ai-chat.service.ts # Chat interface
-│       │   ├── auth.ts            # Authentication state
-│       │   └── calendar.service.ts # Calendar operations
-│       └── models/                # TypeScript interfaces
-├── KeyGenerator/                  # Utility for encryption keys
-├── docker-compose.yml             # Container orchestration
-├── .env.example                   # Environment template
-└── README.md                      # This file
+│       ├── components/
+│       │   ├── login/                # Google OAuth login
+│       │   ├── dashboard/            # AI chat + calendar view
+│       │   │   ├── calendar/         # Monthly calendar grid
+│       │   │   └── chat/             # Chat panel
+│       │   ├── admin/                # Business management
+│       │   │   ├── admin-dashboard   # Overview + stats
+│       │   │   ├── business-setup    # Profile wizard
+│       │   │   ├── service-manager   # Service CRUD
+│       │   │   ├── availability-manager # Weekly schedule + overrides
+│       │   │   └── booking-list      # Booking table + filters
+│       │   └── booking/              # Public client booking
+│       │       ├── booking-page      # 5-step booking flow
+│       │       └── booking-manage    # View/cancel via token
+│       ├── services/
+│       │   ├── auth.ts               # Auth state management
+│       │   ├── api.ts                # HTTP client
+│       │   ├── ai-chat.service.ts    # Chat interface
+│       │   ├── calendar.service.ts   # Calendar operations
+│       │   ├── admin-api.service.ts  # Admin API client
+│       │   └── public-booking-api.service.ts # Public booking client
+│       ├── models/                   # TypeScript interfaces
+│       └── guards/                   # Route protection
+├── plans/                            # Implementation plans & TODO
+├── docker-compose.yml
+└── .env.example
 ```
 
-## 🔧 API Endpoints
+## API Endpoints
 
 ### Authentication
-- `GET /api/auth/google-login` - Initiate OAuth flow
-- `GET /api/auth/callback` - Handle OAuth callback  
-- `GET /api/auth/status` - Check authentication status
-- `POST /api/auth/logout` - Revoke tokens
-- `POST /api/auth/test-token` - Validate access token
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/auth/google-login` | Initiate OAuth flow |
+| GET | `/api/auth/callback` | OAuth callback |
+| GET | `/api/auth/status` | Check auth status |
+| POST | `/api/auth/logout` | Revoke tokens |
 
-### AI Chat Interface  
-- `POST /api/chat/message` - Process natural language commands
-- `GET /api/chat/conversation/{id}` - Get conversation history
-- `GET /api/chat/health` - Chat service health check
+### AI Chat
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/chat/message` | Process natural language command |
+| GET | `/api/chat/health` | Service health check |
 
-### Calendar Operations (Future)
-- `GET /api/calendar/events` - List calendar events
-- `POST /api/calendar/events` - Create new event  
-- `PUT /api/calendar/events/{id}` - Update event
-- `DELETE /api/calendar/events/{id}` - Delete event
-- `GET /api/calendar/freebusy` - Check availability
+### Calendar
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/calendar/events` | List events (date range) |
+| POST | `/api/calendar/events` | Create event |
+| PUT | `/api/calendar/events/{id}` | Update event |
+| DELETE | `/api/calendar/events/{id}` | Delete event |
 
-## 🔒 Security Features
+### Admin (Auth Required)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET/POST/PUT | `/api/admin/profile` | Business profile CRUD |
+| GET/POST/PUT/DELETE | `/api/admin/services` | Service management |
+| GET | `/api/admin/availability` | Get availability rules |
+| POST | `/api/admin/availability/weekly` | Set weekly schedule |
+| POST | `/api/admin/availability/override` | Add date override |
+| POST | `/api/admin/availability/break` | Add break |
+| DELETE | `/api/admin/availability/{id}` | Remove rule |
+| GET | `/api/admin/bookings` | List bookings (filterable) |
+| GET | `/api/admin/bookings/today` | Today's bookings |
+| GET | `/api/admin/bookings/upcoming` | Upcoming bookings |
+| PUT | `/api/admin/bookings/{id}/cancel` | Cancel booking |
+| PUT | `/api/admin/bookings/{id}/complete` | Mark complete |
 
-- ✅ **OAuth 2.0 with PKCE** - Secure authorization flow
-- ✅ **Token Encryption** - AES-256 encryption for stored tokens
-- ✅ **Input Validation** - Comprehensive request validation
-- ✅ **CORS Protection** - Configured for specific origins
-- ✅ **HTTPS Enforcement** - SSL/TLS in production
-- ✅ **Rate Limiting** - API abuse prevention
-- ✅ **Error Handling** - Secure error responses
+### Public Booking (No Auth)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/book/{slug}` | Business info + services |
+| GET | `/api/book/{slug}/slots` | Available time slots for a date |
+| POST | `/api/book/{slug}` | Create booking |
+| GET | `/api/book/manage/{token}` | View booking details |
+| POST | `/api/book/manage/{token}/cancel` | Cancel booking |
 
-## 🌍 Environment Variables
+## How It Works
 
-Create a `.env` file with these variables:
+### Availability Calculation
+When a client requests time slots, the system:
+1. Loads the business's availability rules (weekly hours, breaks, date overrides)
+2. Queries Google Calendar for the owner's actual busy times
+3. Checks existing confirmed bookings in the database
+4. Subtracts all busy periods from available windows
+5. Slices remaining time into slots based on the service duration + buffer
+
+This ensures no double-booking, even if the business owner has personal events on their calendar.
+
+### Booking Flow
+1. Client visits `/book/{business-slug}`
+2. Picks a service from the list
+3. Selects a date (next 30 days)
+4. Chooses an available time slot
+5. Enters contact info and confirms
+6. System creates a Google Calendar event on the business owner's calendar
+7. Confirmation email sent to client, notification email sent to business owner
+8. Client receives a management link to view or cancel
+
+## AI Chat Examples
+
+```
+"Schedule lunch with Sarah tomorrow at 1pm"
+→ Creates a Google Calendar event
+
+"What's on my calendar today?"
+→ Lists all events for the current day
+
+"Show me my bookings for this week"
+→ Displays upcoming client bookings
+
+"Check availability for consultations on Friday"
+→ Returns open time slots for the service
+
+"Cancel booking abc123"
+→ Cancels the booking and removes the calendar event
+```
+
+## Security
+
+- OAuth 2.0 with PKCE for Google authentication
+- AES-256-GCM encryption for stored tokens at rest
+- Rate limiting on public booking endpoints (30 req/min, 10 POST/5min)
+- CORS configured for specific origins
+- Automatic token refresh (5 minutes before expiry)
+- Cancellation tokens for client self-service (no login required)
+
+## Environment Variables
 
 ```env
-# PostgreSQL Configuration
+# PostgreSQL
 POSTGRES_DB=ai_calendar_manager
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=your_secure_password
-POSTGRES_PORT=5432
+DATABASE_URL=postgresql://postgres:password@localhost:5432/ai_calendar_manager
 
-# Database Connection
-DATABASE_URL=postgresql://postgres:your_secure_password@localhost:5432/ai_calendar_manager
-
-# Google OAuth Configuration  
+# Google OAuth
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_REDIRECT_URI=http://localhost:5047/api/auth/callback
 
-# Claude AI Configuration
+# Claude AI
 CLAUDE_API_KEY=your-claude-api-key
 
 # Security
 ENCRYPTION_KEY=your-32-byte-base64-encryption-key
 
-# Application URLs
+# App
 FRONTEND_URL=http://localhost:4200
+
+# Email (optional)
+EMAIL_ENABLED=true
+EMAIL_SMTP_HOST=smtp.gmail.com
+EMAIL_SMTP_PORT=587
+EMAIL_SMTP_USERNAME=your-email@gmail.com
+EMAIL_SMTP_PASSWORD=your-app-password
+EMAIL_FROM_ADDRESS=noreply@yourdomain.com
+EMAIL_FROM_NAME=AI Calendar
 ```
 
-## 🧪 Development & Testing
+## Development
 
-### Run Tests
 ```bash
-# Backend tests
-cd CalendarManager.API
-dotnet test
-
-# Frontend tests  
-cd calendar-manager-ui
-npm test
-```
-
-### Development Mode
-```bash
-# Start with hot reload
-# Terminal 1: Backend
+# Backend with hot reload
 cd CalendarManager.API && dotnet watch run
 
-# Terminal 2: Frontend  
+# Frontend with hot reload
 cd calendar-manager-ui && ng serve
 
-# Terminal 3: Database
+# Database
 docker-compose up postgres -d
 ```
 
-### Production Build
-```bash
-# Build backend
-cd CalendarManager.API
-dotnet publish -c Release
+## Tech Stack
 
-# Build frontend
-cd calendar-manager-ui  
-ng build --configuration production
-```
-
-## 🚀 Deployment
-
-### Docker Deployment
-```bash
-# Build and run all services
-docker-compose up --build
-
-# Production deployment
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-### Manual Deployment
-1. Configure production database
-2. Set production environment variables
-3. Build applications for production
-4. Deploy to your hosting platform
-5. Configure HTTPS and domain
-
-## 🤖 Claude AI Integration
-
-The system uses Claude 3.5 Sonnet with function calling for:
-
-- **Natural Language Processing** - Understanding complex scheduling requests
-- **Intent Recognition** - Determining user goals from conversational input
-- **Context Management** - Maintaining conversation history and context
-- **Smart Responses** - Generating helpful, contextual replies
-- **Tool Orchestration** - Calling appropriate calendar functions
-
-### Function Calling Tools
-- `create_calendar_event` - Creates new calendar events
-- `list_calendar_events` - Retrieves calendar events
-- `find_free_time` - Identifies available time slots
-- `update_calendar_event` - Modifies existing events
-- `delete_calendar_event` - Removes events
-
-## 📊 Performance & Monitoring
-
-- **Response Times**: < 2s for AI processing
-- **Uptime Monitoring**: Health check endpoints
-- **Error Tracking**: Comprehensive logging
-- **Rate Limiting**: API abuse prevention
-- **Caching**: Smart token and response caching
-
-## 🔮 Roadmap
-
-- [ ] **Enhanced AI Features**
-  - Multi-language support
-  - Voice input/output
-  - Meeting summarization
-  - Smart conflict resolution
-
-- [ ] **Advanced Calendar Features**
-  - Recurring event patterns
-  - Meeting room booking
-  - Attendee management
-  - Calendar analytics
-
-- [ ] **Enterprise Features**
-  - Multi-tenant support
-  - Admin dashboard
-  - Usage analytics
-  - API rate limiting per user
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is part of Andrew Rivera's portfolio demonstrating production-ready AI integrations and modern web development practices.
-
-## 📞 Support
-
-For questions or support:
-- Create an issue on GitHub
-- Email: [your-email@domain.com]
-- LinkedIn: [Your LinkedIn Profile]
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Angular 21, TypeScript 5.9, SCSS |
+| Backend | .NET 8, C# 12, Entity Framework Core 8 |
+| Database | PostgreSQL |
+| AI | Claude (Anthropic SDK) with tool calling |
+| Calendar | Google Calendar API v3 |
+| Auth | Google OAuth 2.0 + PKCE |
+| Email | MailKit (SMTP) |
 
 ---
 
-**Status**: ✅ **Production Ready** - Claude AI integration complete, OAuth flow working, full-stack application deployed
-
-**Latest Update**: Implemented Claude 3.5 Sonnet integration with function calling architecture for intelligent calendar management
+Built by Andrew Rivera

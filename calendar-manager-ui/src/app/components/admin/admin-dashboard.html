@@ -1,0 +1,162 @@
+<div class="admin-dashboard">
+  <div class="admin-header">
+    <h1>Admin Dashboard</h1>
+    <p class="subtitle">Manage your business</p>
+  </div>
+
+  @if (loading) {
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Loading...</p>
+    </div>
+  } @else if (error) {
+    <div class="error-message">
+      <p>{{ error }}</p>
+    </div>
+  } @else {
+    <!-- No Profile Setup -->
+    @if (!hasProfile) {
+      <div class="no-profile">
+        <div class="card">
+          <h2>Welcome! Set up your business</h2>
+          <p>Create your business profile to start accepting bookings.</p>
+          <a routerLink="/admin/setup" class="btn btn-primary">Set Up Business</a>
+        </div>
+      </div>
+    } @else {
+      <!-- Profile Overview -->
+      <div class="profile-overview">
+        <div class="card profile-card">
+          <div class="profile-header">
+            <h2>{{ profile?.businessName }}</h2>
+            <span class="badge" [class.active]="profile?.isActive">
+              {{ profile?.isActive ? 'Active' : 'Inactive' }}
+            </span>
+          </div>
+          @if (profile?.description) {
+            <p class="description">{{ profile?.description }}</p>
+          }
+          <div class="profile-actions">
+            <a routerLink="/admin/setup" class="btn btn-secondary">Edit Profile</a>
+            <button (click)="copyBookingLink()" class="btn btn-outline">
+              Copy Booking Link
+            </button>
+          </div>
+          @if (profile?.bookingUrl) {
+            <div class="booking-link">
+              <span class="label">Public booking page:</span>
+              <span class="url">{{ profile?.bookingUrl }}</span>
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <h3>Today's Bookings</h3>
+          @if (todaysLoading) {
+            <div class="loading-small">
+              <div class="spinner-small"></div>
+            </div>
+          } @else {
+            <p class="stat-value">{{ todaysBookings.length }}</p>
+            <p class="stat-label">appointments</p>
+          }
+        </div>
+        <div class="stat-card">
+          <h3>Upcoming</h3>
+          @if (upcomingLoading) {
+            <div class="loading-small">
+              <div class="spinner-small"></div>
+            </div>
+          } @else {
+            <p class="stat-value">{{ upcomingBookings.length }}</p>
+            <p class="stat-label">this week</p>
+          }
+        </div>
+        <div class="stat-card">
+          <h3>Quick Links</h3>
+          <div class="quick-links">
+            <a routerLink="/admin/services" class="quick-link">Manage Services</a>
+            <a routerLink="/admin/availability" class="quick-link">Availability</a>
+            <a routerLink="/admin/bookings" class="quick-link">All Bookings</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Today's Schedule -->
+      <div class="section">
+        <h2>Today's Schedule</h2>
+        @if (todaysLoading) {
+          <div class="loading">
+            <div class="spinner-small"></div>
+          </div>
+        } @else if (todaysBookings.length === 0) {
+          <div class="empty-state">
+            <p>No bookings scheduled for today.</p>
+          </div>
+        } @else {
+          <div class="booking-list">
+            @for (booking of todaysBookings; track booking.id) {
+              <div class="booking-item">
+                <div class="booking-time">
+                  <span class="time">{{ formatTime(booking.startTime) }}</span>
+                  <span class="duration">{{ booking.serviceName }}</span>
+                </div>
+                <div class="booking-details">
+                  <span class="client-name">{{ booking.clientName }}</span>
+                  <span class="service-badge" [style.background-color]="booking.serviceColor">
+                    {{ booking.serviceName }}
+                  </span>
+                </div>
+                <div class="booking-status">
+                  <span class="status" [class]="booking.status.toLowerCase()">
+                    {{ booking.status }}
+                  </span>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Upcoming Bookings -->
+      <div class="section">
+        <h2>Upcoming Bookings</h2>
+        @if (upcomingLoading) {
+          <div class="loading">
+            <div class="spinner-small"></div>
+          </div>
+        } @else if (upcomingBookings.length === 0) {
+          <div class="empty-state">
+            <p>No upcoming bookings.</p>
+          </div>
+        } @else {
+          <div class="booking-list">
+            @for (booking of upcomingBookings; track booking.id) {
+              <div class="booking-item">
+                <div class="booking-date">
+                  <span class="date">{{ formatDate(booking.startTime) }}</span>
+                  <span class="time">{{ formatTime(booking.startTime) }}</span>
+                </div>
+                <div class="booking-details">
+                  <span class="client-name">{{ booking.clientName }}</span>
+                  <span class="service-badge" [style.background-color]="booking.serviceColor">
+                    {{ booking.serviceName }}
+                  </span>
+                </div>
+                <div class="booking-status">
+                  <span class="status" [class]="booking.status.toLowerCase()">
+                    {{ booking.status }}
+                  </span>
+                </div>
+              </div>
+            }
+          </div>
+          <a routerLink="/admin/bookings" class="view-all">View all bookings →</a>
+        }
+      </div>
+    }
+  }
+</div>

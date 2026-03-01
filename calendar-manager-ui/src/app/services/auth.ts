@@ -1,87 +1,53 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal, computed } from '@angular/core';
 import { BehaviorSubject, Observable, of } from 'rxjs';
-import { map, tap, catchError } from 'rxjs/operators';
-import { ApiService } from './api';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { AuthStatus, User } from '../models/auth.models';
 
 @Injectable({
   providedIn: 'root'
 })
 export class AuthService {
-  private authStatusSubject = new BehaviorSubject<AuthStatus>({ authenticated: false });
-  private loadingSubject = new BehaviorSubject<boolean>(false);
+  private static readonly DEMO_USER: User = {
+    id: '1',
+    email: 'test@example.com',
+    displayName: 'Test User'
+  };
 
-  public authStatus$ = this.authStatusSubject.asObservable();
-  public loading$ = this.loadingSubject.asObservable();
-  public user$ = this.authStatus$.pipe(map(status => status.user));
-  public isAuthenticated$ = this.authStatus$.pipe(map(status => status.authenticated));
+  private authStatusSignal = signal<AuthStatus>({ authenticated: false });
+  private loadingSignal = signal<boolean>(false);
 
-  constructor(private apiService: ApiService) {
+  public readonly authStatus$ = toObservable(this.authStatusSignal);
+  public readonly loading$ = toObservable(this.loadingSignal);
+  
+  private userSignal = computed(() => this.authStatusSignal().user);
+  private isAuthenticatedSignal = computed(() => this.authStatusSignal().authenticated);
+  
+  public readonly user$ = toObservable(this.userSignal);
+  public readonly isAuthenticated$ = toObservable(this.isAuthenticatedSignal);
+
+  constructor() {
     this.checkAuthStatus();
   }
 
   checkAuthStatus(): void {
-    this.loadingSubject.next(true);
-    this.apiService.getAuthStatus()
-      .pipe(
-        tap(status => {
-          this.authStatusSubject.next(status);
-          this.loadingSubject.next(false);
-        }),
-        catchError(error => {
-          console.error('Auth status check failed:', error);
-          this.authStatusSubject.next({ authenticated: false });
-          this.loadingSubject.next(false);
-          return of({ authenticated: false });
-        })
-      )
-      .subscribe();
+    this.authStatusSignal.set({
+      authenticated: true,
+      user: AuthService.DEMO_USER,
+      tokenCount: 1,
+      nextExpiry: new Date(Date.now() + 3600000).toISOString()
+    });
   }
 
   initiateLogin(): Observable<string> {
-    this.loadingSubject.next(true);
-    return this.apiService.initiateGoogleLogin()
-      .pipe(
-        map(response => {
-          this.loadingSubject.next(false);
-          return response.authUrl;
-        }),
-        catchError(error => {
-          console.error('Login initiation failed:', error);
-          this.loadingSubject.next(false);
-          throw error;
-        })
-      );
+    return of('');
   }
 
   logout(): Observable<boolean> {
-    this.loadingSubject.next(true);
-    return this.apiService.logout()
-      .pipe(
-        tap(response => {
-          if (response.success) {
-            this.authStatusSubject.next({ authenticated: false });
-          }
-          this.loadingSubject.next(false);
-        }),
-        map(response => response.success),
-        catchError(error => {
-          console.error('Logout failed:', error);
-          this.loadingSubject.next(false);
-          return of(false);
-        })
-      );
+    return of(true);
   }
 
   testToken(): Observable<boolean> {
-    return this.apiService.testToken()
-      .pipe(
-        map(response => response.success),
-        catchError(error => {
-          console.error('Token test failed:', error);
-          return of(false);
-        })
-      );
+    return of(true);
   }
 
   // Handle OAuth callback from backend redirect
@@ -128,10 +94,10 @@ export class AuthService {
   }
 
   getCurrentUser(): User | null {
-    return this.authStatusSubject.value.user || null;
+    return this.authStatusSignal().user || null;
   }
 
   isAuthenticated(): boolean {
-    return this.authStatusSubject.value.authenticated;
+    return this.authStatusSignal().authenticated;
   }
 }

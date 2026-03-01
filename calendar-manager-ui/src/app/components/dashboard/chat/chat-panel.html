@@ -2,10 +2,9 @@
   <!-- Chat Header -->
   <div class="chat-header">
     <div class="header-content">
-      <span class="ai-icon">🤖</span>
-      <span class="header-title">AI Calendar Assistant</span>
+      <span class="header-title">Assistant</span>
     </div>
-    <div class="header-status" *ngIf="processing">
+    <div class="header-status" *ngIf="processing()">
       <span class="status-dot"></span>
       <span class="status-text">Thinking...</span>
     </div>
@@ -14,22 +13,22 @@
   <!-- Messages Area -->
   <div class="messages-container" #messagesContainer>
     <!-- Welcome Message -->
-    <div class="message ai-message info" *ngIf="messages.length === 0">
+    <div class="message ai-message info" *ngIf="messages().length === 0">
       <div class="message-content">
-        <div class="message-avatar">🤖</div>
+        <div class="message-avatar">✨</div>
         <div class="message-body">
           <div class="message-text">
             Hi! I'm your AI Calendar Assistant. I can help you:
           </div>
           <div class="suggestions">
             <button class="suggestion-btn" (click)="messageInput = 'Show my calendar events'; onSend()">
-              📅 Show my events
+              Show my events
             </button>
             <button class="suggestion-btn" (click)="messageInput = 'Schedule a meeting tomorrow at 2pm'; onSend()">
-              📝 Schedule a meeting
+              Schedule a meeting
             </button>
             <button class="suggestion-btn" (click)="messageInput = 'What events do I have today?'; onSend()">
-              🔍 What's on today
+              What's on today
             </button>
           </div>
           <div class="message-time">Just now</div>
@@ -39,13 +38,13 @@
 
     <!-- Chat Messages -->
     <div
-      *ngFor="let message of messages; let i = index"
+      *ngFor="let message of messages(); let i = index"
       class="message"
       [ngClass]="getMessageClass(message)"
-      [class.typing]="processing && i === messages.length - 1"
+      [class.typing]="processing() && i === messages().length - 1"
     >
       <div class="message-content">
-        <div class="message-avatar">{{ message.isUser ? '👤' : '🤖' }}</div>
+        <div class="message-avatar" *ngIf="!message.isUser">✨</div>
         <div class="message-body">
           <div class="message-text">{{ message.text }}</div>
           <div class="message-time">{{ message.timestamp | date:'shortTime' }}</div>
@@ -54,9 +53,9 @@
     </div>
 
     <!-- Typing Indicator -->
-    <div class="message ai-message typing" *ngIf="processing && messages.length > 0">
+    <div class="message ai-message typing" *ngIf="processing() && messages().length > 0">
       <div class="message-content">
-        <div class="message-avatar">🤖</div>
+        <div class="message-avatar">✨</div>
         <div class="message-body">
           <div class="typing-indicator">
             <span class="dot"></span>
@@ -74,19 +73,20 @@
       <textarea
         [(ngModel)]="messageInput"
         (keypress)="onKeyPress($event)"
-        placeholder="Ask me to schedule meetings, check your calendar, or manage events..."
-        [disabled]="processing"
+        placeholder="Ask me to schedule meetings..."
+        [disabled]="processing()"
         rows="1"
         class="message-input"
       ></textarea>
       <button
         class="send-btn"
         (click)="onSend()"
-        [disabled]="!messageInput.trim() || processing"
+        [disabled]="!messageInput.trim() || processing()"
         aria-label="Send message"
       >
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
         </svg>
       </button>
     </div>

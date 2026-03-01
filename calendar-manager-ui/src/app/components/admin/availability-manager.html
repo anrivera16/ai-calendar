@@ -1,0 +1,207 @@
+<div class="availability-manager">
+  <div class="page-header">
+    <a routerLink="/admin/dashboard" class="back-link">← Back to Dashboard</a>
+    <h1>Availability</h1>
+    <p class="subtitle">Set your weekly schedule and manage date overrides</p>
+  </div>
+
+  @if (error) {
+    <div class="error-message">{{ error }}</div>
+  }
+
+  @if (success) {
+    <div class="success-message">{{ success }}</div>
+  }
+
+  @if (loading) {
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Loading availability...</p>
+    </div>
+  } @else {
+    <!-- Weekly Schedule -->
+    <section class="section">
+      <h2>Weekly Schedule</h2>
+      <p class="section-desc">Set your regular availability for each day of the week.</p>
+
+      <div class="weekly-grid">
+        @for (day of days; track day.value) {
+          <div class="day-row" [class.disabled]="!weeklySchedule[day.value].enabled">
+            <div class="day-toggle">
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  [(ngModel)]="weeklySchedule[day.value].enabled"
+                  (change)="saveWeeklySchedule(day.value)"
+                />
+                <span class="slider"></span>
+              </label>
+              <span class="day-name">{{ day.name }}</span>
+            </div>
+            <div class="day-times">
+              <select
+                [(ngModel)]="weeklySchedule[day.value].startTime"
+                [disabled]="!weeklySchedule[day.value].enabled"
+                (change)="saveWeeklySchedule(day.value)"
+              >
+                @for (time of timeOptions; track time) {
+                  <option [value]="time">{{ time }}</option>
+                }
+              </select>
+              <span class="separator">to</span>
+              <select
+                [(ngModel)]="weeklySchedule[day.value].endTime"
+                [disabled]="!weeklySchedule[day.value].enabled"
+                (change)="saveWeeklySchedule(day.value)"
+              >
+                @for (time of timeOptions; track time) {
+                  <option [value]="time">{{ time }}</option>
+                }
+              </select>
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- Date Overrides -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Date Overrides</h2>
+          <p class="section-desc">Set custom availability for specific dates (holidays, special events, etc.).</p>
+        </div>
+        <button class="btn btn-outline" (click)="toggleOverrideForm()">
+          {{ showOverrideForm ? 'Cancel' : '+ Add Override' }}
+        </button>
+      </div>
+
+      @if (showOverrideForm) {
+        <div class="override-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Date</label>
+              <input type="date" [(ngModel)]="overrideDate" />
+            </div>
+            <div class="form-group checkbox">
+              <label>
+                <input type="checkbox" [(ngModel)]="overrideIsAvailable" />
+                Available for bookings
+              </label>
+            </div>
+          </div>
+          @if (overrideIsAvailable) {
+            <div class="form-row">
+              <div class="form-group">
+                <label>Start Time</label>
+                <select [(ngModel)]="overrideStartTime">
+                  @for (time of timeOptions; track time) {
+                    <option [value]="time">{{ time }}</option>
+                  }
+                </select>
+              </div>
+              <div class="form-group">
+                <label>End Time</label>
+                <select [(ngModel)]="overrideEndTime">
+                  @for (time of timeOptions; track time) {
+                    <option [value]="time">{{ time }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+          }
+          <button class="btn btn-primary" (click)="saveOverride()">Save Override</button>
+        </div>
+      }
+
+      @if (getOverrideRules().length > 0) {
+        <div class="rules-list">
+          @for (rule of getOverrideRules(); track rule.id) {
+            <div class="rule-item">
+              <div class="rule-info">
+                <span class="rule-date">{{ formatDate(rule.specificDate) }}</span>
+                <span class="rule-badge" [class.available]="rule.isAvailable">
+                  {{ rule.isAvailable ? rule.startTime + ' - ' + rule.endTime : 'Unavailable' }}
+                </span>
+              </div>
+              <button
+                class="btn-icon delete"
+                (click)="deleteRule(rule.id)"
+                [disabled]="deletingRuleId === rule.id"
+              >
+                🗑️
+              </button>
+            </div>
+          }
+        </div>
+      } @else if (!showOverrideForm) {
+        <div class="empty-hint">No date overrides set. Add one to block or open specific dates.</div>
+      }
+    </section>
+
+    <!-- Breaks -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Breaks</h2>
+          <p class="section-desc">Block out time for breaks (lunch, meetings, etc.).</p>
+        </div>
+        <button class="btn btn-outline" (click)="toggleBreakForm()">
+          {{ showBreakForm ? 'Cancel' : '+ Add Break' }}
+        </button>
+      </div>
+
+      @if (showBreakForm) {
+        <div class="override-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Date</label>
+              <input type="date" [(ngModel)]="breakDate" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Start Time</label>
+              <select [(ngModel)]="breakStartTime">
+                @for (time of timeOptions; track time) {
+                  <option [value]="time">{{ time }}</option>
+                }
+              </select>
+            </div>
+            <div class="form-group">
+              <label>End Time</label>
+              <select [(ngModel)]="breakEndTime">
+                @for (time of timeOptions; track time) {
+                  <option [value]="time">{{ time }}</option>
+                }
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary" (click)="saveBreak()">Save Break</button>
+        </div>
+      }
+
+      @if (getBreakRules().length > 0) {
+        <div class="rules-list">
+          @for (rule of getBreakRules(); track rule.id) {
+            <div class="rule-item">
+              <div class="rule-info">
+                <span class="rule-date">{{ formatDate(rule.specificDate) }}</span>
+                <span class="rule-badge break">{{ rule.startTime }} - {{ rule.endTime }}</span>
+              </div>
+              <button
+                class="btn-icon delete"
+                (click)="deleteRule(rule.id)"
+                [disabled]="deletingRuleId === rule.id"
+              >
+                🗑️
+              </button>
+            </div>
+          }
+        </div>
+      } @else if (!showBreakForm) {
+        <div class="empty-hint">No breaks set.</div>
+      }
+    </section>
+  }
+</div>

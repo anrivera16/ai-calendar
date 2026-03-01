@@ -1,63 +1,88 @@
 <div class="dashboard-container">
-  <!-- Header -->
+  <!-- Top Navigation -->
   <header class="dashboard-header">
-    <div class="header-content">
-      <h1>🗓️ AI Calendar</h1>
-      <div class="user-info" *ngIf="user$ | async as user">
-        <span class="welcome">Welcome, {{ user.displayName }}!</span>
-        <button class="logout-btn" (click)="onLogout()" [disabled]="loading$ | async">
-          Logout
-        </button>
-      </div>
+    <div class="header-brand">
+      <span class="brand-icon">✨</span>
+      <h1>AI Calendar</h1>
     </div>
+
+    <nav class="header-nav">
+      <a routerLink="/admin/dashboard" class="nav-link" title="Admin Dashboard">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7"></rect>
+          <rect x="14" y="3" width="7" height="7"></rect>
+          <rect x="14" y="14" width="7" height="7"></rect>
+          <rect x="3" y="14" width="7" height="7"></rect>
+        </svg>
+        <span>Admin</span>
+      </a>
+    </nav>
+
     <div class="header-actions">
-      <button class="test-btn" (click)="onTestToken()" [disabled]="loading$ | async">
-        🧪 Test
+      <div class="user-info" *ngIf="user()">
+        <span class="welcome">{{ user()!.displayName }}</span>
+      </div>
+      <button class="icon-btn" (click)="onLoadCalendar()" [disabled]="calendarLoading()" title="Refresh Calendar">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
       </button>
-      <button class="refresh-btn" (click)="onLoadCalendar()" [disabled]="calendarLoading$ | async">
-        🔄
+      <button class="icon-btn" (click)="onTestToken()" [disabled]="loading()" title="Test Token">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+          <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+      </button>
+      <button class="icon-btn danger" (click)="onLogout()" [disabled]="loading()" title="Logout">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
       </button>
     </div>
   </header>
 
   <!-- Mobile Toggle -->
-  <div class="mobile-toggle" *ngIf="showMobileToggle">
+  <div class="mobile-toggle" *ngIf="showMobileToggle()">
     <button
       class="toggle-btn"
-      [class.active]="activePanel === 'chat'"
-      (click)="setActivePanel('chat')"
+      [class.active]="activePanel() === 'calendar'"
+      (click)="setActivePanel('calendar')"
     >
-      💬 Chat
+      Calendar
     </button>
     <button
       class="toggle-btn"
-      [class.active]="activePanel === 'calendar'"
-      (click)="setActivePanel('calendar')"
+      [class.active]="activePanel() === 'chat'"
+      (click)="setActivePanel('chat')"
     >
-      📅 Calendar
+      Assistant
     </button>
   </div>
 
-  <!-- Main Content - Split Layout -->
+  <!-- Main Content - Seamless Split Layout -->
   <main class="dashboard-main">
-    <!-- Chat Panel (60% on desktop) -->
-    <section class="chat-section" [class.mobile-hidden]="showMobileToggle && activePanel !== 'chat'">
-      <app-chat-panel
-        [messages]="(messages$ | async) || []"
-        [processing]="(chatProcessing$ | async) || false"
-        (sendMessage)="onSendMessage($event)"
-      ></app-chat-panel>
-    </section>
-
-    <!-- Calendar Panel (40% on desktop) -->
-    <section class="calendar-section" [class.mobile-hidden]="showMobileToggle && activePanel !== 'calendar'">
+    <!-- Calendar Panel (Main Canvas - 65% on desktop) -->
+    <section class="calendar-section" [class.mobile-hidden]="showMobileToggle() && activePanel() !== 'calendar'">
       <app-calendar-view
-        [events]="(events$ | async) || []"
-        [highlightedEventId]="highlightedEventId"
-        [loading]="(calendarLoading$ | async) || false"
+        [events]="events() || []"
+        [highlightedEventId]="highlightedEventId()"
+        [loading]="calendarLoading() || false"
         (daySelected)="onDaySelected($event)"
         (eventSelected)="onEventSelected($event)"
       ></app-calendar-view>
+    </section>
+
+    <!-- Chat Panel (Sidebar - 35% on desktop) -->
+    <section class="chat-section" [class.mobile-hidden]="showMobileToggle() && activePanel() !== 'chat'">
+      <app-chat-panel
+        [messages]="messages() || []"
+        [processing]="chatProcessing() || false"
+        (sendMessage)="onSendMessage($event)"
+      ></app-chat-panel>
     </section>
   </main>
 </div>

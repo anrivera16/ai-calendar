@@ -1,0 +1,26 @@
+{
+  "weeklyRules": [
+    { "dayOfWeek": 0, "startTime": "09:00", "endTime": "17:00", "isActive": false },
+    { "dayOfWeek": 1, "startTime": "09:00", "endTime": "17:00", "isActive": true },
+    { "dayOfWeek": 2, "startTime": "09:00", "endTime": "17:00", "isActive": true },
+    { "dayOfWeek": 3, "startTime": "09:00", "endTime": "17:00", "isActive": true },
+    { "dayOfWeek": 4, "startTime": "09:00", "endTime": "17:00", "isActive": true },
+    { "dayOfWeek": 5, "startTime": "09:00", "endTime": "17:00", "isActive": true },
+    { "dayOfWeek": 6, "startTime": "10:00", "endTime": "14:00", "isActive": false }
+  ],
+  "overrides": [
+    {
+      "date": "2026-12-25",
+      "isUnavailable": true,
+      "reason": "Christmas Holiday"
+    }
+  ],
+  "breaks": [
+    {
+      "dayOfWeek": 1,
+      "startTime": "12:00",
+      "endTime": "13:00",
+      "name": "Lunch Break"
+    }
+  ]
+}

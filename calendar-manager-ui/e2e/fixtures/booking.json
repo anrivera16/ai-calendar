@@ -1,0 +1,7 @@
+{
+  "clientName": "John Doe",
+  "clientEmail": "john.doe@example.com",
+  "clientPhone": "+1-555-987-6543",
+  "notes": "Looking forward to our meeting!",
+  "status": "confirmed"
+}
