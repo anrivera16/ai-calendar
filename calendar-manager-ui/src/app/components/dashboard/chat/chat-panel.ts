@@ -1,7 +1,7 @@
 import { Component, ElementRef, effect, input, output, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ChatMessage } from '../../../services/ai-chat.service';
+import { ChatMessage, AiChatService } from '../../../services/ai-chat.service';
 
 @Component({
   selector: 'app-chat-panel',
@@ -19,7 +19,7 @@ export class ChatPanelComponent {
 
   messageInput: string = '';
 
-  constructor() {
+  constructor(private aiChatService: AiChatService) {
     effect(() => {
       const messages = this.messages();
       if (messages.length > 0) {
@@ -33,6 +33,10 @@ export class ChatPanelComponent {
       this.sendMessage.emit(this.messageInput.trim());
       this.messageInput = '';
     }
+  }
+
+  onNewConversation(): void {
+    this.aiChatService.startNewConversation();
   }
 
   onKeyPress(event: KeyboardEvent): void {

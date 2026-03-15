@@ -86,36 +86,12 @@ export class DashboardComponent {
 
   onLogout() {
     if (confirm('Are you sure you want to logout?')) {
-      this.authService.logout().subscribe({
-        next: (success) => {
-          if (success) {
-            console.log('Logged out successfully');
-          } else {
-            alert('Logout failed. Please try again.');
-          }
-        },
-        error: (error) => {
-          console.error('Logout error:', error);
-          alert('Logout failed: ' + error.message);
-        },
-      });
+      this.authService.logout();
     }
   }
 
   onTestToken() {
-    this.authService.testToken().subscribe({
-      next: (success) => {
-        if (success) {
-          alert('✅ Access token is valid and working!');
-        } else {
-          alert('❌ Token test failed');
-        }
-      },
-      error: (error) => {
-        console.error('Token test error:', error);
-        alert('❌ Token test failed: ' + error.message);
-      },
-    });
+    this.authService.testToken();
   }
 
   onLoadCalendar() {

@@ -1,14 +1,17 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using CalendarManager.API.Data;
 using CalendarManager.API.Data.Entities;
 using CalendarManager.API.Models.DTOs;
+using System.Security.Claims;
 using System.Text.RegularExpressions;
 
 namespace CalendarManager.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class AdminController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -20,42 +23,28 @@ public class AdminController : ControllerBase
         _configuration = configuration;
     }
 
-    // Helper to check if running in demo mode
-    private bool IsDemoMode()
-    {
-        return _configuration["DemoMode"] != "false";
-    }
-
-    // Helper to get current user (demo mode uses test@example.com)
-    // NOTE: This is hardcoded for demo purposes only. In production,
-    // this should be replaced with proper authentication (e.g., JWT claims).
-    // Set DemoMode=false in appsettings to block access in production.
+    // Helper to get current user from JWT claims
     private async Task<User> GetCurrentUserAsync()
     {
-        // Block access if not in demo mode
-        if (!IsDemoMode())
+        // Get user ID from JWT claims
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
         {
-            throw new UnauthorizedAccessException("Admin API requires authentication. Set DemoMode=true to enable demo access.");
+            throw new UnauthorizedAccessException("Invalid or missing user ID in token");
         }
         
-        var email = "test@example.com";
         var user = await _context.Users
             .Include(u => u.BusinessProfile)
                 .ThenInclude(bp => bp!.Services)
             .Include(u => u.BusinessProfile)
                 .ThenInclude(bp => bp!.AvailabilityRules)
             .Include(u => u.UserPreferences)
-            .FirstOrDefaultAsync(u => u.Email == email);
+            .FirstOrDefaultAsync(u => u.Id == userId);
 
         if (user == null)
         {
-            user = new User
-            {
-                Email = email,
-                DisplayName = "Test User"
-            };
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+            throw new UnauthorizedAccessException("User not found. Please complete OAuth login first.");
         }
 
         return user;

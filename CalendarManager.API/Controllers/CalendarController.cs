@@ -1,14 +1,17 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using CalendarManager.API.Data;
 using CalendarManager.API.Data.Entities;
 using CalendarManager.API.Services.Interfaces;
 using CalendarManager.API.Models.DTOs;
+using System.Security.Claims;
 
 namespace CalendarManager.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class CalendarController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -20,19 +23,20 @@ public class CalendarController : ControllerBase
         _calendarService = calendarService;
     }
 
-    // Helper method to get the authenticated user
+    // Helper method to get the authenticated user from JWT claims
     private async Task<User?> GetAuthenticatedUserAsync()
     {
-        // Get the first user with OAuth tokens
+        // Get user ID from JWT claims
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return null;
+        }
+        
         var user = await _context.Users
             .Include(u => u.OAuthTokens)
-            .FirstOrDefaultAsync(u => u.OAuthTokens.Any());
-        
-        if (user == null)
-        {
-            // Try to get any user
-            user = await _context.Users.FirstOrDefaultAsync();
-        }
+            .FirstOrDefaultAsync(u => u.Id == userId);
         
         return user;
     }
@@ -48,7 +52,7 @@ public class CalendarController : ControllerBase
             var user = await GetAuthenticatedUserAsync();
             if (user == null)
             {
-                return StatusCode(500, new { error = "No user found. Please authenticate with Google first." });
+                return Unauthorized(new { error = "Please authenticate with Google first." });
             }
 
             DateTime startDate;
@@ -76,6 +80,10 @@ public class CalendarController : ControllerBase
             var events = await _calendarService.GetEventsAsync(user.Id, startDate, endDate);
             return Ok(events);
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new { error = ex.Message, requiresReauth = true });
+        }
         catch (Exception ex)
         {
             return StatusCode(500, new { error = ex.Message });
@@ -91,7 +99,7 @@ public class CalendarController : ControllerBase
             var user = await GetAuthenticatedUserAsync();
             if (user == null)
             {
-                return StatusCode(500, new { error = "No user found. Please authenticate with Google first." });
+                return Unauthorized(new { error = "Please authenticate with Google first." });
             }
 
             var createdEvent = await _calendarService.CreateEventAsync(user.Id, eventDto);
@@ -114,7 +122,7 @@ public class CalendarController : ControllerBase
             var user = await GetAuthenticatedUserAsync();
             if (user == null)
             {
-                return StatusCode(500, new { error = "No user found." });
+                return Unauthorized(new { error = "Please authenticate with Google first." });
             }
 
             var updatedEvent = await _calendarService.UpdateEventAsync(user.Id, eventId, eventDto);
@@ -135,7 +143,7 @@ public class CalendarController : ControllerBase
             var user = await GetAuthenticatedUserAsync();
             if (user == null)
             {
-                return StatusCode(500, new { error = "No user found." });
+                return Unauthorized(new { error = "Please authenticate with Google first." });
             }
 
             await _calendarService.DeleteEventAsync(user.Id, eventId);

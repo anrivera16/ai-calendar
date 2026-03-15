@@ -19,21 +19,14 @@ export class App implements OnInit {
   ngOnInit() {
     // Handle OAuth callback if present
     const callbackResult = this.authService.handleCallback();
-    
-    if (callbackResult.success !== false) {
-      if (callbackResult.success) {
-        // Show success message and redirect to dashboard
-        setTimeout(() => {
-          alert(`✅ ${callbackResult.message || 'Successfully authenticated with Google!'}`);
-          this.router.navigate(['/dashboard']);
-        }, 500);
-      } else if (callbackResult.message) {
-        // Show error message and redirect to login
-        setTimeout(() => {
-          alert(`❌ ${callbackResult.message}`);
-          this.router.navigate(['/login']);
-        }, 500);
-      }
+
+    if (callbackResult.success) {
+      // Auth status is already set synchronously by handleCallback — navigate immediately
+      this.router.navigate(['/dashboard']);
+    } else if (callbackResult.message) {
+      // Show error and redirect to login
+      console.error('OAuth error:', callbackResult.message);
+      this.router.navigate(['/login']);
     }
   }
 }

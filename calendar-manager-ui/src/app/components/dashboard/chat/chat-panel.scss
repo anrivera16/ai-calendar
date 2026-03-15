@@ -26,6 +26,33 @@
     letter-spacing: -0.025em;
   }
 
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .new-chat-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg-hover);
+    border: 1px solid var(--border-default);
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover {
+      color: var(--text-primary);
+      border-color: var(--border-focus);
+      background: var(--bg-surface);
+    }
+  }
+
   .header-status {
     display: flex;
     align-items: center;

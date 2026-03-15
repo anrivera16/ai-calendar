@@ -271,6 +271,28 @@ This ensures no double-booking, even if the business owner has personal events o
 → Cancels the booking and removes the calendar event
 ```
 
+## Current Status
+
+> **This project is under active development.** Core features are built but some areas are still being stabilized.
+
+### Working
+- Admin dashboard — business profile setup, service CRUD, availability rules, booking management
+- Public booking flow — 5-step client booking with real-time slot calculation
+- Availability engine — calculates open slots from weekly rules, breaks, overrides, Google Calendar busy times, and existing bookings
+- Booking lifecycle — create, cancel, with race condition protection at the DB level
+- Claude AI chat — tool calling for calendar events, booking queries, and cancellations (falls back to pattern matching if API is unavailable)
+- Email notifications — booking confirmation, cancellation, and owner alerts via SMTP (optional, logs when disabled)
+- Database — EF Core with auto-migrations, 10 entities, PostgreSQL
+- Unit tests — XUnit + Moq covering services and controllers
+
+### In Progress
+- **Google OAuth integration** — flow is implemented (PKCE, token refresh, encryption at rest) but has integration bugs being worked through
+- **Admin authentication** — currently uses a demo mode bypass; real session/JWT auth not yet wired up
+
+### Not Yet Implemented
+- **Conversation history** — chat works per-request but message persistence is stubbed out (DB entities exist, endpoint returns empty)
+- **Multi-instance session storage** — PKCE verifier uses in-memory storage (needs Redis or similar for scaled deployments)
+
 ## Security
 
 - OAuth 2.0 with PKCE for Google authentication

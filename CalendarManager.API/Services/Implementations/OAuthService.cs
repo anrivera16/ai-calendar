@@ -7,6 +7,7 @@ using CalendarManager.API.Data.Entities;
 using CalendarManager.API.Models;
 using CalendarManager.API.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace CalendarManager.API.Services.Implementations;
 
@@ -16,6 +17,7 @@ public class OAuthService : IOAuthService
     private readonly AppDbContext _context;
     private readonly ITokenEncryptionService _encryptionService;
     private readonly HttpClient _httpClient;
+    private readonly ILogger<OAuthService> _logger;
     
     // In-memory storage for PKCE code verifiers with expiration (use Redis in production)
     // Made static so it persists across HTTP requests
@@ -25,12 +27,14 @@ public class OAuthService : IOAuthService
         IConfiguration configuration,
         AppDbContext context,
         ITokenEncryptionService encryptionService,
-        HttpClient httpClient)
+        HttpClient httpClient,
+        ILogger<OAuthService> logger)
     {
         _configuration = configuration;
         _context = context;
         _encryptionService = encryptionService;
         _httpClient = httpClient;
+        _logger = logger;
     }
 
     public string GetAuthorizationUrl(string state)
@@ -165,22 +169,35 @@ public class OAuthService : IOAuthService
 
     public async Task<string> GetValidAccessTokenAsync(Guid userId)
     {
-        // Find user's OAuth token in database
-        var tokenEntity = await _context.OAuthTokens
-            .FirstOrDefaultAsync(t => t.UserId == userId);
-        
-        if (tokenEntity == null)
+        // Find user's OAuth tokens in database — get the newest one
+        var tokenEntities = await _context.OAuthTokens
+            .Where(t => t.UserId == userId)
+            .OrderByDescending(t => t.CreatedAt)
+            .ToListAsync();
+
+        if (!tokenEntities.Any())
         {
             throw new InvalidOperationException("No OAuth token found for user. Please authenticate with Google first.");
         }
-        
+
+        // If there are multiple tokens, clean up stale ones — keep only the newest
+        if (tokenEntities.Count > 1)
+        {
+            _logger.LogWarning("Found {Count} OAuth tokens for user {UserId}, cleaning up stale tokens", tokenEntities.Count, userId);
+            var staleTokens = tokenEntities.Skip(1).ToList();
+            _context.OAuthTokens.RemoveRange(staleTokens);
+            await _context.SaveChangesAsync();
+        }
+
+        var tokenEntity = tokenEntities.First();
+
         // Check if token expires soon (refresh 5 minutes early to be safe)
         if (tokenEntity.ExpiresAt <= DateTime.UtcNow.AddMinutes(5))
         {
             // Token is expired or expiring soon, refresh it
             tokenEntity = await RefreshAccessTokenAsync(tokenEntity);
         }
-        
+
         // Decrypt and return the access token
         return _encryptionService.Decrypt(tokenEntity.AccessToken);
     }
@@ -219,6 +236,14 @@ public class OAuthService : IOAuthService
             
             if (!response.IsSuccessStatusCode)
             {
+                // invalid_grant means the refresh token was revoked or expired permanently
+                if (responseContent.Contains("invalid_grant"))
+                {
+                    _logger.LogWarning("Google refresh token invalid_grant for user {UserId}. Removing stale token.", tokenEntity.UserId);
+                    _context.OAuthTokens.Remove(tokenEntity);
+                    await _context.SaveChangesAsync();
+                    throw new UnauthorizedAccessException("Your Google authorization has been revoked. Please sign in again.");
+                }
                 throw new InvalidOperationException($"Token refresh failed: {responseContent}");
             }
             
@@ -295,7 +320,7 @@ public class OAuthService : IOAuthService
         {
             // Log the error but don't fail the operation
             // The important thing is to remove tokens from our database
-            Console.WriteLine($"Warning: Failed to revoke token with Google: {ex.Message}");
+            _logger.LogWarning(ex, "Failed to revoke token with Google");
         }
         
         // Remove token from our database regardless of Google revocation result
@@ -311,8 +336,8 @@ public class OAuthService : IOAuthService
         var expiresAt = DateTime.UtcNow.AddMinutes(10);
         _codeVerifiers[state] = (codeVerifier, expiresAt);
         
-        Console.WriteLine($"[DEBUG] Stored code verifier for state: {state}, expires at: {expiresAt}");
-        Console.WriteLine($"[DEBUG] Total verifiers in memory: {_codeVerifiers.Count}");
+        _logger.LogDebug("Stored PKCE code verifier for state {State}, expires at {ExpiresAt}. Total verifiers: {Count}", 
+            state, expiresAt, _codeVerifiers.Count);
     }
 
     public string? RetrieveCodeVerifier(string state)
@@ -320,30 +345,74 @@ public class OAuthService : IOAuthService
         // Retrieve and remove PKCE code verifier (one-time use)
         // Check expiration to prevent stale verifiers
         
-        Console.WriteLine($"[DEBUG] Attempting to retrieve code verifier for state: {state}");
-        Console.WriteLine($"[DEBUG] Current verifiers in memory: {_codeVerifiers.Count}");
+        _logger.LogDebug("Attempting to retrieve PKCE code verifier for state {State}. Current verifiers: {Count}", 
+            state, _codeVerifiers.Count);
         
         if (_codeVerifiers.TryRemove(state, out var verifierData))
         {
-            Console.WriteLine($"[DEBUG] Found verifier, checking expiration. Expires at: {verifierData.ExpiresAt}, Current time: {DateTime.UtcNow}");
+            _logger.LogDebug("Found verifier, checking expiration. Expires at: {ExpiresAt}, Current time: {Now}", 
+                verifierData.ExpiresAt, DateTime.UtcNow);
             
             // Check if expired
             if (verifierData.ExpiresAt > DateTime.UtcNow)
             {
-                Console.WriteLine($"[DEBUG] Code verifier is valid, returning it");
+                _logger.LogDebug("Code verifier is valid, returning it");
                 return verifierData.CodeVerifier;
             }
             else
             {
-                Console.WriteLine($"[DEBUG] Code verifier has expired");
+                _logger.LogDebug("Code verifier has expired");
             }
         }
         else
         {
-            Console.WriteLine($"[DEBUG] No code verifier found for state: {state}");
+            _logger.LogDebug("No code verifier found for state: {State}", state);
         }
         
         return null;
+    }
+
+    public async Task<GoogleUserInfo> GetUserInfoAsync(string accessToken)
+    {
+        try
+        {
+            // Create request to Google's userinfo endpoint
+            var request = new HttpRequestMessage(HttpMethod.Get, "https://www.googleapis.com/oauth2/v2/userinfo");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+
+            var response = await _httpClient.SendAsync(request);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            _logger.LogInformation("GetUserInfoAsync response status: {StatusCode}, content preview: {ContentPreview}", 
+                response.StatusCode, responseContent.Length > 200 ? responseContent.Substring(0, 200) : responseContent);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("Failed to get user info from Google: {StatusCode} - {Content}", response.StatusCode, responseContent);
+                throw new InvalidOperationException($"Failed to get user info from Google: {response.StatusCode}");
+            }
+
+            var userInfo = JsonSerializer.Deserialize<GoogleUserInfo>(responseContent);
+            if (userInfo == null || string.IsNullOrEmpty(userInfo.Email))
+            {
+                _logger.LogError("Invalid user info response. Parsed userInfo is null: {IsNull}, Email is empty: {EmailEmpty}. Content: {Content}", 
+                    userInfo == null, string.IsNullOrEmpty(userInfo?.Email), responseContent);
+                throw new InvalidOperationException("Invalid user info response from Google");
+            }
+
+            _logger.LogDebug("Successfully fetched user info for email: {Email}", userInfo.Email);
+            return userInfo;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Failed to parse user info response from Google");
+            throw new InvalidOperationException("Invalid JSON response from Google userinfo endpoint", ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "HTTP error while fetching user info from Google");
+            throw new InvalidOperationException("Failed to communicate with Google userinfo endpoint", ex);
+        }
     }
 
     // HELPER METHODS TO IMPLEMENT:

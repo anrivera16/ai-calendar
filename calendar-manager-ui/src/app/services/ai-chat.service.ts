@@ -13,6 +13,14 @@ export interface ChatMessage {
   type?: 'info' | 'success' | 'error' | 'warning';
 }
 
+export interface ConversationSummary {
+  conversationId: string;
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+  messageCount: number;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -26,7 +34,7 @@ export class AiChatService {
       type: 'info'
     }
   ]);
-  
+
   public readonly messages$ = toObservable(this.messagesSignal);
   public readonly messages = this.messagesSignal.asReadonly();
 
@@ -35,11 +43,82 @@ export class AiChatService {
   public readonly processing = this.processingSignal.asReadonly();
 
   private conversationId: string | undefined;
+  public get currentConversationId(): string | undefined { return this.conversationId; }
 
   constructor(
     private calendarService: CalendarService,
     private apiService: ApiService
   ) { }
+
+  /**
+   * Start a new conversation - clears the current conversation ID and messages
+   */
+  startNewConversation(): void {
+    this.conversationId = undefined;
+    this.messagesSignal.set([
+      {
+        id: Date.now().toString(),
+        text: '👋 Hi! I\'m your AI calendar assistant. Try saying things like:\n\n• "Schedule a meeting with John tomorrow at 2pm"\n• "Show me my events for next week"\n• "Create a lunch appointment on Friday at noon"\n• "Cancel my 3pm meeting today"',
+        isUser: false,
+        timestamp: new Date(),
+        type: 'info'
+      }
+    ]);
+  }
+
+  /**
+   * Load all conversations for the current user
+   */
+  getConversations(): Observable<{ conversations: ConversationSummary[] }> {
+    return this.apiService.getChatConversations();
+  }
+
+  /**
+   * Load a specific conversation with its message history
+   */
+  loadConversation(conversationId: string): void {
+    this.conversationId = conversationId;
+    this.processingSignal.set(true);
+
+    this.apiService.getChatConversation(conversationId).subscribe({
+      next: (response) => {
+        // Convert backend messages to ChatMessage format
+        const loadedMessages: ChatMessage[] = response.messages.map((m: any) => ({
+          id: m.id,
+          text: m.content,
+          isUser: m.role === 'user',
+          timestamp: new Date(m.timestamp),
+          type: m.role === 'user' ? undefined : 'info'
+        }));
+
+        if (loadedMessages.length === 0) {
+          // No messages yet, show welcome
+          loadedMessages.push({
+            id: Date.now().toString(),
+            text: '👋 This conversation is empty. Start by sending a message!',
+            isUser: false,
+            timestamp: new Date(),
+            type: 'info'
+          });
+        }
+
+        this.messagesSignal.set(loadedMessages);
+        this.processingSignal.set(false);
+      },
+      error: (error) => {
+        console.error('Error loading conversation:', error);
+        this.handleError(error);
+        this.processingSignal.set(false);
+      }
+    });
+  }
+
+  /**
+   * Delete a conversation
+   */
+  deleteConversation(conversationId: string): Observable<any> {
+    return this.apiService.deleteChatConversation(conversationId);
+  }
 
   sendMessage(message: string): void {
     // Add user message
@@ -49,7 +128,7 @@ export class AiChatService {
       isUser: true,
       timestamp: new Date()
     };
-    
+
     this.addMessage(userMessage);
     this.processingSignal.set(true);
 
@@ -70,7 +149,7 @@ export class AiChatService {
 
     // Call Claude backend
     console.log('🔄 Sending message to backend:', message);
-    this.apiService.processChatMessage(message, 'test@example.com', this.conversationId)
+    this.apiService.processChatMessage(message, this.conversationId)
       .subscribe({
         next: (response) => {
           console.log('✅ Received backend response:', response);
@@ -95,7 +174,7 @@ export class AiChatService {
 
   private handleBackendResponse(response: any): void {
     console.log('📝 Processing backend response:', response);
-    
+
     // Update conversation ID
     if (response.conversationId) {
       this.conversationId = response.conversationId;
@@ -109,7 +188,7 @@ export class AiChatService {
       timestamp: new Date(),
       type: this.mapMessageType(response.type)
     };
-    
+
     this.addMessage(aiMessage);
 
     // Handle any calendar actions that were executed
@@ -120,9 +199,9 @@ export class AiChatService {
 
   private handleError(error: any): void {
     console.error('Chat API error:', error);
-    
+
     let errorText = '';
-    
+
     // Check for specific error types
     if (error.name === 'TimeoutError') {
       errorText = `⏱️ **Request timed out**\n\nThe AI service is taking longer than expected. This might be due to:\n• High API usage\n• Network connectivity issues\n• Service maintenance\n\nPlease try again in a moment.`;
@@ -133,7 +212,7 @@ export class AiChatService {
     } else {
       errorText = `❌ **Connection Issue**\n\nI'm having trouble connecting to the AI service right now.\n\n**You can:**\n• Try refreshing the page\n• Check your internet connection\n• Use the dashboard for calendar operations\n• Try again in a few moments\n\n*Error: ${error.message || 'Network error'}*`;
     }
-    
+
     const errorMessage: ChatMessage = {
       id: Date.now().toString(),
       text: errorText,
@@ -141,16 +220,16 @@ export class AiChatService {
       timestamp: new Date(),
       type: 'error'
     };
-    
+
     this.addMessage(errorMessage);
   }
 
   private mapMessageType(backendType: string | number): 'info' | 'success' | 'error' | 'warning' {
     // Handle both string and numeric backend types
-    const typeStr = typeof backendType === 'number' ? 
-      this.getMessageTypeFromNumber(backendType) : 
+    const typeStr = typeof backendType === 'number' ?
+      this.getMessageTypeFromNumber(backendType) :
       backendType?.toString()?.toLowerCase();
-      
+
     switch (typeStr) {
       case 'success': return 'success';
       case 'error': return 'error';

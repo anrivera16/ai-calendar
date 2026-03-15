@@ -2,6 +2,9 @@ using CalendarManager.API.Data;
 using CalendarManager.API.Services.Interfaces;
 using CalendarManager.API.Services.Implementations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 using AspNetCoreRateLimit;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,6 +27,18 @@ var smtpUsername = Environment.GetEnvironmentVariable("SMTP_USERNAME");
 var smtpPassword = Environment.GetEnvironmentVariable("SMTP_PASSWORD");
 var emailFromAddress = Environment.GetEnvironmentVariable("EMAIL_FROM_ADDRESS");
 var emailFromName = Environment.GetEnvironmentVariable("EMAIL_FROM_NAME");
+
+// JWT configuration from environment variables
+var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET");
+var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "AI Calendar Manager";
+var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "AI Calendar Manager";
+
+if (!string.IsNullOrEmpty(jwtSecret))
+    builder.Configuration["Authentication:Jwt:SecretKey"] = jwtSecret;
+if (!string.IsNullOrEmpty(jwtIssuer))
+    builder.Configuration["Authentication:Jwt:Issuer"] = jwtIssuer;
+if (!string.IsNullOrEmpty(jwtAudience))
+    builder.Configuration["Authentication:Jwt:Audience"] = jwtAudience;
 
 if (!string.IsNullOrEmpty(googleClientId))
     builder.Configuration["Authentication:Google:ClientId"] = googleClientId;
@@ -59,6 +74,37 @@ if (!string.IsNullOrEmpty(demoMode))
 
 // Add services to the container.
 builder.Services.AddControllers();
+
+// JWT Authentication configuration
+var jwtKey = builder.Configuration["Authentication:Jwt:SecretKey"];
+if (string.IsNullOrEmpty(jwtKey))
+{
+    // Require JWT_SECRET in production - throw exception if not set
+    throw new InvalidOperationException(
+        "JWT_SECRET environment variable is required. " +
+        "Set Authentication:Jwt:SecretKey in configuration or JWT_SECRET environment variable.");
+}
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = builder.Configuration["Authentication:Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Authentication:Jwt:Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+    };
+});
+
+builder.Services.AddAuthorization();
 
 // Rate limiting configuration
 builder.Services.AddMemoryCache();
@@ -176,6 +222,10 @@ app.UseCors("AllowSpecificOrigins");
 app.UseIpRateLimiting();
 
 app.UseRouting();
+
+// Use authentication and authorization
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Map health check endpoint
 app.MapHealthChecks("/health");

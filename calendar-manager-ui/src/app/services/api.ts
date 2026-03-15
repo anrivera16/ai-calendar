@@ -1,15 +1,18 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { Router } from '@angular/router';
+import { HttpClient, HttpErrorResponse, HttpInterceptor, HttpRequest, HttpHandler, HttpEvent } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
 import { catchError, timeout } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
-import { 
-  AuthStatus, 
-  AuthResponse, 
-  GoogleLoginResponse, 
-  ApiError 
+import {
+  AuthStatus,
+  AuthResponse,
+  GoogleLoginResponse,
+  ApiError
 } from '../models/auth.models';
 import { CalendarEvent, CreateEvent, UpdateEvent } from '../models/calendar.models';
+
+const TOKEN_KEY = 'jwt_token';
 
 @Injectable({
   providedIn: 'root'
@@ -41,10 +44,9 @@ export class ApiService {
   }
 
   // Chat endpoints
-  processChatMessage(message: string, userEmail?: string, conversationId?: string): Observable<any> {
+  processChatMessage(message: string, conversationId?: string): Observable<any> {
     return this.http.post<any>(`${this.baseUrl}/api/chat/message`, {
       message,
-      userEmail: userEmail || 'test@example.com',
       conversationId
     }).pipe(
       timeout(30000), // 30 second timeout
@@ -54,6 +56,16 @@ export class ApiService {
 
   getChatConversation(conversationId: string): Observable<any> {
     return this.http.get<any>(`${this.baseUrl}/api/chat/conversation/${conversationId}`)
+      .pipe(catchError(this.handleError));
+  }
+
+  getChatConversations(): Observable<any> {
+    return this.http.get<any>(`${this.baseUrl}/api/chat/conversations`)
+      .pipe(catchError(this.handleError));
+  }
+
+  deleteChatConversation(conversationId: string): Observable<any> {
+    return this.http.delete<any>(`${this.baseUrl}/api/chat/conversation/${conversationId}`)
       .pipe(catchError(this.handleError));
   }
 
@@ -81,7 +93,7 @@ export class ApiService {
 
   private handleError(error: HttpErrorResponse): Observable<never> {
     let errorMessage = 'An unknown error occurred!';
-    
+
     if (error.error instanceof ErrorEvent) {
       // Client-side error
       errorMessage = `Error: ${error.error.message}`;
@@ -98,5 +110,31 @@ export class ApiService {
 
     console.error('API Error:', errorMessage);
     return throwError(() => new Error(errorMessage));
+  }
+}
+
+// Http interceptor to add JWT token to all requests and handle 401s
+@Injectable()
+export class AuthInterceptor implements HttpInterceptor {
+  constructor(private router: Router) {}
+
+  intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
+    const token = localStorage.getItem(TOKEN_KEY);
+
+    const cloned = token
+      ? req.clone({ headers: req.headers.set('Authorization', `Bearer ${token}`) })
+      : req;
+
+    return next.handle(cloned).pipe(
+      catchError((error: HttpErrorResponse) => {
+        if (error.status === 401) {
+          // Clear auth state on any 401 to prevent redirect loops
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem('user_data');
+          this.router.navigate(['/login']);
+        }
+        return throwError(() => error);
+      })
+    );
   }
 }

@@ -4,7 +4,7 @@ public class ChatMessageRequest
 {
     public string Message { get; set; } = string.Empty;
     public string? ConversationId { get; set; }
-    public string? UserEmail { get; set; } = "test@example.com"; // Default for demo
+    public string? UserEmail { get; set; } // UserEmail is now provided by JWT auth, not request body
 }
 
 public class ChatResponse

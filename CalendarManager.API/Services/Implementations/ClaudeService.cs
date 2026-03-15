@@ -12,8 +12,19 @@ using System.Text.Json.Nodes;
 using CommonTool = Anthropic.SDK.Common.Tool;
 using AnthropicMessage = Anthropic.SDK.Messaging.Message;
 using AnthropicRoleType = Anthropic.SDK.Messaging.RoleType;
+using MessageEntity = CalendarManager.API.Data.Entities.Message;
 
 namespace CalendarManager.API.Services.Implementations;
+
+/// <summary>
+/// User context passed through method calls instead of stored in instance fields.
+/// This ensures thread safety - each request gets its own context.
+/// </summary>
+public record UserContext(
+    Guid UserDbId,
+    string UserEmail,
+    Guid BusinessProfileId
+);
 
 public class ClaudeService : IClaudeService
 {
@@ -24,15 +35,15 @@ public class ClaudeService : IClaudeService
     private readonly ILogger<ClaudeService> _logger;
     private readonly IConfiguration _configuration;
     private readonly AppDbContext _context;
-    private string? _currentUserId;
-    private Guid _currentUserDbId;
-    private Guid _currentBusinessProfileId;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false
     };
+
+    // Maximum number of previous messages to include in context
+    private const int MaxContextMessages = 20;
 
     public ClaudeService(
         IConfiguration configuration,
@@ -67,6 +78,21 @@ public class ClaudeService : IClaudeService
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == userId);
             if (user == null)
             {
+                // Try parsing as Guid to properly query by Id
+                if (Guid.TryParse(userId, out var userGuid))
+                {
+                    user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userGuid);
+                }
+                
+                if (user == null)
+                {
+                    // Also try to find test user by email for demo purposes
+                    user = await _context.Users.FirstOrDefaultAsync(u => u.Email == "test@example.com");
+                }
+            }
+            
+            if (user == null)
+            {
                 return new ChatResponse
                 {
                     Message = "User not found. Please authenticate first.",
@@ -76,13 +102,40 @@ public class ClaudeService : IClaudeService
                 };
             }
 
-            // Check configuration for Claude usage
+            // Get user's business profile
+            var businessProfile = await _context.BusinessProfiles
+                .FirstOrDefaultAsync(bp => bp.UserId == user.Id);
+            var businessProfileId = businessProfile?.Id ?? Guid.Empty;
+
+            // Create user context (thread-safe, passed via parameters)
+            var userContext = new UserContext(user.Id, userId, businessProfileId);
+
+            // Parse conversation ID
+            Guid? convGuid = null;
+            if (!string.IsNullOrEmpty(conversationId) && Guid.TryParse(conversationId, out var parsedConvGuid))
+            {
+                convGuid = parsedConvGuid;
+            }
+
+            // Load conversation history if we have a conversation ID
+            List<MessageEntity>? conversationHistory = null;
+            if (convGuid.HasValue)
+            {
+                conversationHistory = await _context.Messages
+                    .Where(m => m.ConversationId == convGuid.Value)
+                    .OrderBy(m => m.CreatedAt)
+                    .Take(MaxContextMessages)
+                    .ToListAsync();
+            }
+
+            // Process message with AI
+            string response;
+            List<CalendarAction>? actions = null;
+            
             var fallbackOnly = _configuration.GetValue<bool>("Claude:FallbackOnly", false);
             var claudeApiKey = Environment.GetEnvironmentVariable("CLAUDE_API_KEY")
                              ?? _configuration["Claude:ApiKey"];
             
-            string response;
-            List<CalendarAction>? actions = null;
             if (fallbackOnly)
             {
                 _logger.LogWarning("🔄 FALLBACK MODE ACTIVE: Configuration 'Claude:FallbackOnly' is set to true");
@@ -96,10 +149,49 @@ public class ClaudeService : IClaudeService
             else
             {
                 _logger.LogInformation("🤖 CLAUDE AI MODE: Using Claude API with tool-calling capabilities");
-                // Try Claude first, fall back to intelligent processing if needed
-                var result = await ProcessWithClaudeAsync(message, user.Id, userId);
+                var result = await ProcessWithClaudeAsync(message, userContext, conversationHistory);
                 response = result.Response;
                 actions = result.Actions;
+            }
+
+            // Save messages to database
+            if (convGuid.HasValue)
+            {
+                // Save user message
+                var userMessage = new MessageEntity
+                {
+                    Id = Guid.NewGuid(),
+                    ConversationId = convGuid.Value,
+                    Role = "user",
+                    Content = message,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.Messages.Add(userMessage);
+
+                // Save assistant response
+                var assistantMessage = new MessageEntity
+                {
+                    Id = Guid.NewGuid(),
+                    ConversationId = convGuid.Value,
+                    Role = "assistant",
+                    Content = response,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.Messages.Add(assistantMessage);
+
+                // Update conversation timestamp
+                var conversation = await _context.Conversations.FindAsync(convGuid.Value);
+                if (conversation != null)
+                {
+                    conversation.UpdatedAt = DateTime.UtcNow;
+                    // Set title from first message if not set
+                    if (string.IsNullOrEmpty(conversation.Title))
+                    {
+                        conversation.Title = message.Length > 100 ? message[..100] + "..." : message;
+                    }
+                }
+
+                await _context.SaveChangesAsync();
             }
             
             return new ChatResponse
@@ -108,7 +200,7 @@ public class ClaudeService : IClaudeService
                 Success = true,
                 Type = MessageType.Success,
                 Actions = actions,
-                ConversationId = conversationId ?? Guid.NewGuid().ToString()
+                ConversationId = conversationId ?? convGuid?.ToString()
             };
         }
         catch (Exception ex)
@@ -122,9 +214,9 @@ public class ClaudeService : IClaudeService
                 return new ChatResponse
                 {
                     Message = fallbackResponse + "\n\n*Note: I encountered a technical issue but provided this intelligent response.*",
-                    Success = true, // Still successful from user perspective
+                    Success = true,
                     Type = MessageType.Warning,
-                    ConversationId = conversationId ?? Guid.NewGuid().ToString()
+                    ConversationId = conversationId
                 };
             }
             catch
@@ -140,24 +232,18 @@ public class ClaudeService : IClaudeService
         }
     }
 
-    private async Task<(string Response, List<CalendarAction>? Actions)> ProcessWithClaudeAsync(string message, Guid userId, string userEmail)
+    private async Task<(string Response, List<CalendarAction>? Actions)> ProcessWithClaudeAsync(
+        string message, 
+        UserContext userContext,
+        List<MessageEntity>? conversationHistory = null)
     {
         try
         {
-            // Store current user context for tool execution
-            _currentUserId = userEmail;
-            _currentUserDbId = userId;
-            
-            // Get user's business profile
-            var businessProfile = await _context.BusinessProfiles
-                .FirstOrDefaultAsync(bp => bp.UserId == userId);
-            _currentBusinessProfileId = businessProfile?.Id ?? Guid.Empty;
-            
             _logger.LogInformation("Starting Claude API processing for user: {UserEmail}, BusinessProfileId: {BusinessProfileId}", 
-                userEmail, _currentBusinessProfileId);
+                userContext.UserEmail, userContext.BusinessProfileId);
             
-            // Use Claude API with tool calling
-            var result = await CallClaudeAPIAsync(message);
+            // Use Claude API with tool calling, passing user context and history
+            var result = await CallClaudeAPIAsync(message, userContext, conversationHistory);
             
             _logger.LogInformation("✅ CLAUDE AI SUCCESS: Response generated using Claude API model");
             
@@ -167,20 +253,35 @@ public class ClaudeService : IClaudeService
         {
             _logger.LogError(ex, "❌ CLAUDE API ERROR: {Error}. Falling back to pattern matching.", ex.Message);
             _logger.LogWarning("🔄 FALLBACK MODE ACTIVATED: Due to Claude API error");
-            return (ProcessIntelligentFallback(message), null); // Fall back to intelligent processing
+            return (ProcessIntelligentFallback(message), null);
         }
     }
 
-    private async Task<(string Response, List<CalendarAction>? Actions)> CallClaudeAPIAsync(string userMessage)
+    private async Task<(string Response, List<CalendarAction>? Actions)> CallClaudeAPIAsync(
+        string userMessage,
+        UserContext userContext,
+        List<MessageEntity>? conversationHistory = null)
     {
         try
         {
             _logger.LogInformation("Making Claude API call with tools for message: {Message}", userMessage);
             
-            var messages = new List<AnthropicMessage>()
+            // Build messages list starting with conversation history
+            var messages = new List<AnthropicMessage>();
+
+            // Add conversation history if available
+            if (conversationHistory != null && conversationHistory.Count > 0)
             {
-                new AnthropicMessage(AnthropicRoleType.User, userMessage)
-            };
+                foreach (var msg in conversationHistory)
+                {
+                    var role = msg.Role == "user" ? AnthropicRoleType.User : AnthropicRoleType.Assistant;
+                    messages.Add(new AnthropicMessage(role, msg.Content));
+                }
+                _logger.LogInformation("Added {Count} messages from conversation history", conversationHistory.Count);
+            }
+
+            // Add current user message
+            messages.Add(new AnthropicMessage(AnthropicRoleType.User, userMessage));
 
             var tools = GetCalendarTools();
             
@@ -221,7 +322,7 @@ public class ClaudeService : IClaudeService
                     _logger.LogInformation("Executing tool: {ToolName} (id: {ToolId})", toolUse.Name, toolUse.Id);
                     _logger.LogInformation("Tool input: {Input}", toolUse.Input?.ToJsonString());
 
-                    var toolResult = await ExecuteToolAsync(toolUse, executedActions);
+                    var toolResult = await ExecuteToolAsync(toolUse, executedActions, userContext);
                     
                     toolResults.Add(new ToolResultContent
                     {
@@ -376,7 +477,7 @@ public class ClaudeService : IClaudeService
     /// <summary>
     /// Executes a tool call from Claude and returns the result as a JSON string.
     /// </summary>
-    private async Task<string> ExecuteToolAsync(ToolUseContent toolUse, List<CalendarAction> executedActions)
+    private async Task<string> ExecuteToolAsync(ToolUseContent toolUse, List<CalendarAction> executedActions, UserContext userContext)
     {
         try
         {
@@ -385,25 +486,25 @@ public class ClaudeService : IClaudeService
             switch (toolUse.Name)
             {
                 case "create_calendar_event":
-                    return await ExecuteCreateEventAsync(input, executedActions);
+                    return await ExecuteCreateEventAsync(input, executedActions, userContext);
                     
                 case "list_calendar_events":
-                    return await ExecuteListEventsAsync(input, executedActions);
+                    return await ExecuteListEventsAsync(input, executedActions, userContext);
                     
                 case "delete_calendar_event":
-                    return await ExecuteDeleteEventAsync(input, executedActions);
+                    return await ExecuteDeleteEventAsync(input, executedActions, userContext);
                     
                 case "get_free_busy":
-                    return await ExecuteGetFreeBusyAsync(input, executedActions);
+                    return await ExecuteGetFreeBusyAsync(input, executedActions, userContext);
                     
                 case "check_booking_availability":
-                    return await ExecuteCheckBookingAvailabilityAsync(input, executedActions);
+                    return await ExecuteCheckBookingAvailabilityAsync(input, executedActions, userContext);
                     
                 case "view_bookings":
-                    return await ExecuteViewBookingsAsync(input, executedActions);
+                    return await ExecuteViewBookingsAsync(input, executedActions, userContext);
                     
                 case "cancel_booking":
-                    return await ExecuteCancelBookingAsync(input, executedActions);
+                    return await ExecuteCancelBookingAsync(input, executedActions, userContext);
                     
                 default:
                     _logger.LogWarning("Unknown tool: {ToolName}", toolUse.Name);
@@ -417,7 +518,7 @@ public class ClaudeService : IClaudeService
         }
     }
 
-    private async Task<string> ExecuteCreateEventAsync(JsonNode? input, List<CalendarAction> executedActions)
+    private async Task<string> ExecuteCreateEventAsync(JsonNode? input, List<CalendarAction> executedActions, UserContext userContext)
     {
         var title = input?["title"]?.GetValue<string>() ?? "Untitled Event";
         var startTimeStr = input?["start_time"]?.GetValue<string>();
@@ -456,7 +557,7 @@ public class ClaudeService : IClaudeService
             Location = location
         };
 
-        var createdEvent = await _calendarService.CreateEventAsync(_currentUserDbId, createDto);
+        var createdEvent = await _calendarService.CreateEventAsync(userContext.UserDbId, createDto);
         
         var action = new CalendarAction
         {
@@ -479,7 +580,7 @@ public class ClaudeService : IClaudeService
         }, JsonOptions);
     }
 
-    private async Task<string> ExecuteListEventsAsync(JsonNode? input, List<CalendarAction> executedActions)
+    private async Task<string> ExecuteListEventsAsync(JsonNode? input, List<CalendarAction> executedActions, UserContext userContext)
     {
         var startDateStr = input?["start_date"]?.GetValue<string>();
         var endDateStr = input?["end_date"]?.GetValue<string>();
@@ -507,7 +608,7 @@ public class ClaudeService : IClaudeService
 
         _logger.LogInformation("Listing events from {Start} to {End} (max: {Max})", startDate, endDate, maxResults);
 
-        var events = await _calendarService.GetEventsAsync(_currentUserDbId, startDate, endDate);
+        var events = await _calendarService.GetEventsAsync(userContext.UserDbId, startDate, endDate);
         var limitedEvents = events.Take(maxResults).ToList();
 
         var action = new CalendarAction
@@ -538,7 +639,7 @@ public class ClaudeService : IClaudeService
         }, JsonOptions);
     }
 
-    private async Task<string> ExecuteDeleteEventAsync(JsonNode? input, List<CalendarAction> executedActions)
+    private async Task<string> ExecuteDeleteEventAsync(JsonNode? input, List<CalendarAction> executedActions, UserContext userContext)
     {
         var eventId = input?["event_id"]?.GetValue<string>();
         
@@ -549,7 +650,7 @@ public class ClaudeService : IClaudeService
 
         _logger.LogInformation("Deleting event: {EventId}", eventId);
 
-        await _calendarService.DeleteEventAsync(_currentUserDbId, eventId);
+        await _calendarService.DeleteEventAsync(userContext.UserDbId, eventId);
 
         var action = new CalendarAction
         {
@@ -567,7 +668,7 @@ public class ClaudeService : IClaudeService
         }, JsonOptions);
     }
 
-    private async Task<string> ExecuteGetFreeBusyAsync(JsonNode? input, List<CalendarAction> executedActions)
+    private async Task<string> ExecuteGetFreeBusyAsync(JsonNode? input, List<CalendarAction> executedActions, UserContext userContext)
     {
         var startDateStr = input?["start_date"]?.GetValue<string>();
         var endDateStr = input?["end_date"]?.GetValue<string>();
@@ -586,7 +687,7 @@ public class ClaudeService : IClaudeService
 
         _logger.LogInformation("Checking free/busy from {Start} to {End}", startDate, endDate);
 
-        var freeBusy = await _calendarService.GetFreeBusyAsync(_currentUserDbId, _currentUserId!, startDate, endDate);
+        var freeBusy = await _calendarService.GetFreeBusyAsync(userContext.UserDbId, userContext.UserEmail, startDate, endDate);
 
         var action = new CalendarAction
         {
@@ -610,9 +711,9 @@ public class ClaudeService : IClaudeService
         }, JsonOptions);
     }
     
-    private async Task<string> ExecuteCheckBookingAvailabilityAsync(JsonNode? input, List<CalendarAction> executedActions)
+    private async Task<string> ExecuteCheckBookingAvailabilityAsync(JsonNode? input, List<CalendarAction> executedActions, UserContext userContext)
     {
-        if (_currentBusinessProfileId == Guid.Empty)
+        if (userContext.BusinessProfileId == Guid.Empty)
         {
             return JsonSerializer.Serialize(new { error = "No business profile found for this user" }, JsonOptions);
         }
@@ -637,7 +738,7 @@ public class ClaudeService : IClaudeService
         
         _logger.LogInformation("Checking booking availability for service {ServiceId} on {Date}", serviceId, date);
         
-        var availableSlots = await _availabilityService.GetAvailableSlotsAsync(_currentBusinessProfileId, serviceId, date);
+        var availableSlots = await _availabilityService.GetAvailableSlotsAsync(userContext.BusinessProfileId, serviceId, date);
         
         var action = new CalendarAction
         {
@@ -661,9 +762,9 @@ public class ClaudeService : IClaudeService
         }, JsonOptions);
     }
     
-    private async Task<string> ExecuteViewBookingsAsync(JsonNode? input, List<CalendarAction> executedActions)
+    private async Task<string> ExecuteViewBookingsAsync(JsonNode? input, List<CalendarAction> executedActions, UserContext userContext)
     {
-        if (_currentBusinessProfileId == Guid.Empty)
+        if (userContext.BusinessProfileId == Guid.Empty)
         {
             return JsonSerializer.Serialize(new { error = "No business profile found for this user" }, JsonOptions);
         }
@@ -685,9 +786,9 @@ public class ClaudeService : IClaudeService
         }
         
         _logger.LogInformation("Viewing bookings for business {BusinessProfileId} from {Start} to {End}, status: {Status}", 
-            _currentBusinessProfileId, startDate, endDate, statusStr);
+            userContext.BusinessProfileId, startDate, endDate, statusStr);
         
-        var bookings = await _bookingService.GetBookingsAsync(_currentBusinessProfileId, startDate, endDate);
+        var bookings = await _bookingService.GetBookingsAsync(userContext.BusinessProfileId, startDate, endDate);
         
         // Filter by status if provided
         if (!string.IsNullOrEmpty(statusStr) && Enum.TryParse<BookingStatus>(statusStr, true, out var status))
@@ -721,9 +822,9 @@ public class ClaudeService : IClaudeService
         }, JsonOptions);
     }
     
-    private async Task<string> ExecuteCancelBookingAsync(JsonNode? input, List<CalendarAction> executedActions)
+    private async Task<string> ExecuteCancelBookingAsync(JsonNode? input, List<CalendarAction> executedActions, UserContext userContext)
     {
-        if (_currentBusinessProfileId == Guid.Empty)
+        if (userContext.BusinessProfileId == Guid.Empty)
         {
             return JsonSerializer.Serialize(new { error = "No business profile found for this user" }, JsonOptions);
         }
@@ -740,11 +841,11 @@ public class ClaudeService : IClaudeService
             return JsonSerializer.Serialize(new { error = "Invalid booking_id format" }, JsonOptions);
         }
         
-        _logger.LogInformation("Cancelling booking {BookingId} for business {BusinessProfileId}", bookingId, _currentBusinessProfileId);
+        _logger.LogInformation("Cancelling booking {BookingId} for business {BusinessProfileId}", bookingId, userContext.BusinessProfileId);
         
         try
         {
-            var cancelledBooking = await _bookingService.CancelBookingAsync(_currentBusinessProfileId, bookingId);
+            var cancelledBooking = await _bookingService.CancelBookingAsync(userContext.BusinessProfileId, bookingId);
             
             var action = new CalendarAction
             {

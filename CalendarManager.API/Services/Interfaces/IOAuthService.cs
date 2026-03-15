@@ -1,4 +1,5 @@
 using CalendarManager.API.Data.Entities;
+using CalendarManager.API.Models;
 
 namespace CalendarManager.API.Services.Interfaces;
 
@@ -53,4 +54,11 @@ public interface IOAuthService
     /// <param name="state">State parameter</param>
     /// <returns>PKCE code verifier</returns>
     string? RetrieveCodeVerifier(string state);
+    
+    /// <summary>
+    /// Fetches user profile information from Google's userinfo endpoint
+    /// </summary>
+    /// <param name="accessToken">Valid access token from Google</param>
+    /// <returns>User profile information from Google</returns>
+    Task<GoogleUserInfo> GetUserInfoAsync(string accessToken);
 }

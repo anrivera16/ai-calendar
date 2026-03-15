@@ -74,7 +74,7 @@ public class GoogleCalendarService : IGoogleCalendarService
             
             return events;
         }
-        catch (Exception ex) when (!(ex is HttpRequestException))
+        catch (Exception ex) when (ex is not HttpRequestException and not UnauthorizedAccessException)
         {
             // Wrap other exceptions
             throw new InvalidOperationException($"Failed to retrieve calendar events: {ex.Message}", ex);
@@ -133,7 +133,7 @@ public class GoogleCalendarService : IGoogleCalendarService
             
             return createdEvent;
         }
-        catch (Exception ex) when (!(ex is HttpRequestException))
+        catch (Exception ex) when (ex is not HttpRequestException and not UnauthorizedAccessException)
         {
             throw new InvalidOperationException($"Failed to create calendar event: {ex.Message}", ex);
         }
@@ -199,7 +199,7 @@ public class GoogleCalendarService : IGoogleCalendarService
             
             return updatedEvent;
         }
-        catch (Exception ex) when (!(ex is HttpRequestException))
+        catch (Exception ex) when (ex is not HttpRequestException and not UnauthorizedAccessException)
         {
             throw new InvalidOperationException($"Failed to update calendar event: {ex.Message}", ex);
         }
@@ -224,7 +224,7 @@ public class GoogleCalendarService : IGoogleCalendarService
                 await HandleHttpError(response, "Failed to delete calendar event");
             }
         }
-        catch (Exception ex) when (!(ex is HttpRequestException))
+        catch (Exception ex) when (ex is not HttpRequestException and not UnauthorizedAccessException)
         {
             throw new InvalidOperationException($"Failed to delete calendar event: {ex.Message}", ex);
         }
@@ -294,7 +294,7 @@ public class GoogleCalendarService : IGoogleCalendarService
                 BusyPeriods = busyPeriods
             };
         }
-        catch (Exception ex) when (!(ex is HttpRequestException))
+        catch (Exception ex) when (ex is not HttpRequestException and not UnauthorizedAccessException)
         {
             throw new InvalidOperationException($"Failed to get free/busy information: {ex.Message}", ex);
         }

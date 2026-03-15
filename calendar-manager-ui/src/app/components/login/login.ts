@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ActivatedRoute } from '@angular/router';
 import { Observable } from 'rxjs';
 import { AuthService } from '../../services/auth';
 
@@ -13,25 +14,19 @@ import { AuthService } from '../../services/auth';
 export class LoginComponent implements OnInit {
   loading$: Observable<boolean>;
   isAuthenticated$: Observable<boolean>;
+  isReauth = false;
 
-  constructor(private authService: AuthService) {
+  constructor(private authService: AuthService, private route: ActivatedRoute) {
     this.loading$ = this.authService.loading$;
     this.isAuthenticated$ = this.authService.isAuthenticated$;
   }
 
   ngOnInit() {
-    // Component initialization
+    this.isReauth = this.route.snapshot.queryParamMap.get('reauth') === 'true';
+    // Don't auto-initiate login on reauth — let user click to avoid redirect loops
   }
 
   onLogin() {
-    this.authService.initiateLogin().subscribe({
-      next: (authUrl) => {
-        window.location.href = authUrl;
-      },
-      error: (error) => {
-        console.error('Login failed:', error);
-        alert('Login failed: ' + error.message);
-      }
-    });
+    this.authService.initiateLogin();
   }
 }
