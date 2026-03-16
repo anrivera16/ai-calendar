@@ -50,10 +50,10 @@
             </span>
           </div>
           <div class="service-actions">
-            <button class="btn-icon" (click)="openEditModal(service)" title="Edit">
+            <button class="btn-icon" (click)="openEditModal(service)" [attr.aria-label]="'Edit ' + service.name">
               ✏️
             </button>
-            <button class="btn-icon delete" (click)="confirmDelete(service.id)" title="Delete">
+            <button class="btn-icon delete" (click)="confirmDelete(service.id)" [attr.aria-label]="'Delete ' + service.name">
               🗑️
             </button>
           </div>
@@ -64,11 +64,11 @@
 
   <!-- Modal -->
   @if (showModal) {
-    <div class="modal-overlay" (click)="closeModal()">
-      <div class="modal" (click)="$event.stopPropagation()">
+    <div class="modal-overlay" (click)="closeModal()" (keydown.escape)="closeModal()">
+      <div class="modal" role="dialog" aria-modal="true" [attr.aria-label]="modalMode === 'edit' ? 'Edit Service' : 'Add Service'" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <h2>{{ modalMode === 'edit' ? 'Edit Service' : 'Add Service' }}</h2>
-          <button class="close-btn" (click)="closeModal()">×</button>
+          <button class="close-btn" (click)="closeModal()" aria-label="Close dialog">×</button>
         </div>
         <form (ngSubmit)="onSubmit()" class="modal-body">
           @if (formError) {
@@ -76,8 +76,9 @@
           }
 
           <div class="form-group">
-            <label>Service Name *</label>
+            <label for="service-name">Service Name *</label>
             <input
+              id="service-name"
               type="text"
               [(ngModel)]="formName"
               name="name"
@@ -87,8 +88,9 @@
           </div>
 
           <div class="form-group">
-            <label>Description</label>
+            <label for="service-description">Description</label>
             <textarea
+              id="service-description"
               [(ngModel)]="formDescription"
               name="description"
               placeholder="Describe what's included..."
@@ -98,8 +100,8 @@
 
           <div class="form-row">
             <div class="form-group">
-              <label>Duration (minutes)</label>
-              <select [(ngModel)]="formDurationMinutes" name="duration">
+              <label for="service-duration">Duration (minutes)</label>
+              <select id="service-duration" [(ngModel)]="formDurationMinutes" name="duration">
                 <option [value]="15">15 min</option>
                 <option [value]="30">30 min</option>
                 <option [value]="45">45 min</option>
@@ -110,8 +112,9 @@
             </div>
 
             <div class="form-group">
-              <label>Price ($)</label>
+              <label for="service-price">Price ($)</label>
               <input
+                id="service-price"
                 type="number"
                 [(ngModel)]="formPrice"
                 name="price"
@@ -122,16 +125,18 @@
           </div>
 
           <div class="form-group">
-            <label>Color</label>
-            <div class="color-picker">
+            <label id="color-label">Color</label>
+            <div class="color-picker" role="radiogroup" aria-labelledby="color-label">
               @for (color of colorOptions; track color.value) {
                 <button
                   type="button"
                   class="color-option"
+                  role="radio"
+                  [attr.aria-checked]="formColor === color.value"
                   [class.selected]="formColor === color.value"
                   [style.background-color]="color.value"
                   (click)="formColor = color.value"
-                  [title]="color.name"
+                  [attr.aria-label]="color.name"
                 ></button>
               }
             </div>
@@ -162,8 +167,8 @@
 
   <!-- Delete Confirmation -->
   @if (showDeleteConfirm) {
-    <div class="modal-overlay" (click)="cancelDelete()">
-      <div class="modal confirm-modal" (click)="$event.stopPropagation()">
+    <div class="modal-overlay" (click)="cancelDelete()" (keydown.escape)="cancelDelete()">
+      <div class="modal confirm-modal" role="alertdialog" aria-modal="true" aria-label="Confirm deletion" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <h2>Delete Service</h2>
         </div>

@@ -84,7 +84,7 @@
                 class="btn-icon"
                 (click)="completeBooking(booking.id)"
                 [disabled]="actionLoading === booking.id"
-                title="Mark as completed"
+                [attr.aria-label]="'Mark ' + booking.clientName + ' booking as completed'"
               >
                 ✅
               </button>
@@ -92,7 +92,7 @@
                 class="btn-icon cancel"
                 (click)="confirmCancel(booking.id)"
                 [disabled]="actionLoading === booking.id"
-                title="Cancel booking"
+                [attr.aria-label]="'Cancel ' + booking.clientName + ' booking'"
               >
                 ❌
               </button>
@@ -105,8 +105,8 @@
 
   <!-- Cancel Confirmation Modal -->
   @if (showCancelConfirm) {
-    <div class="modal-overlay" (click)="cancelDelete()">
-      <div class="modal" (click)="$event.stopPropagation()">
+    <div class="modal-overlay" (click)="cancelDelete()" (keydown.escape)="cancelDelete()">
+      <div class="modal" role="alertdialog" aria-modal="true" aria-label="Confirm booking cancellation" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <h2>Cancel Booking</h2>
         </div>

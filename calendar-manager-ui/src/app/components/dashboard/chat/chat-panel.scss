@@ -24,6 +24,7 @@
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.025em;
+    margin: 0;
   }
 
   .header-actions {
@@ -83,7 +84,9 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  scroll-behavior: smooth;
+  @media (prefers-reduced-motion: no-preference) {
+    scroll-behavior: smooth;
+  }
 }
 
 .message {

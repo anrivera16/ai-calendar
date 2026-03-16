@@ -5,12 +5,12 @@
   </div>
 
   @if (loading) {
-    <div class="loading">
-      <div class="spinner"></div>
+    <div class="loading" role="status">
+      <div class="spinner" aria-hidden="true"></div>
       <p>Loading...</p>
     </div>
   } @else if (error) {
-    <div class="error-message">
+    <div class="error-message" role="alert">
       <p>{{ error }}</p>
     </div>
   } @else {

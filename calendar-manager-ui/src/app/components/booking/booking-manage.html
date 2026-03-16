@@ -1,14 +1,14 @@
-<div class="manage-container">
+<main class="manage-container" id="main-content">
   <h1>Manage Your Booking</h1>
 
   <!-- Loading State -->
-  <div *ngIf="loading" class="loading-state">
-    <div class="spinner"></div>
+  <div *ngIf="loading" class="loading-state" role="status">
+    <div class="spinner" aria-hidden="true"></div>
     <p>Loading booking details...</p>
   </div>
 
   <!-- Error State -->
-  <div *ngIf="error && !loading" class="error-state">
+  <div *ngIf="error && !loading" class="error-state" role="alert">
     <p>{{ error }}</p>
     <button (click)="loadBooking()">Try Again</button>
   </div>
@@ -45,7 +45,7 @@
       </div>
 
       <!-- Cancel Success Message -->
-      <div *ngIf="cancelSuccess" class="success-message">
+      <div *ngIf="cancelSuccess" class="success-message" role="status">
         <p>Your booking has been cancelled successfully.</p>
       </div>
     </div>
@@ -55,4 +55,4 @@
   <div class="footer-links">
     <a routerLink="/">Return to Home</a>
   </div>
-</div>
+</main>

@@ -1,4 +1,4 @@
-<div class="booking-container">
+<main class="booking-container" id="main-content">
   <!-- Header -->
   <header class="booking-header">
     <h1>{{ business?.businessName || 'Book an Appointment' }}</h1>
@@ -6,13 +6,13 @@
   </header>
 
   <!-- Loading State -->
-  <div *ngIf="loading" class="loading-state">
-    <div class="spinner"></div>
+  <div *ngIf="loading" class="loading-state" role="status">
+    <div class="spinner" aria-hidden="true"></div>
     <p>Loading...</p>
   </div>
 
   <!-- Error State -->
-  <div *ngIf="error && !loading" class="error-state">
+  <div *ngIf="error && !loading" class="error-state" role="alert">
     <p>{{ error }}</p>
     <button (click)="loadBusiness()">Try Again</button>
   </div>
@@ -20,38 +20,41 @@
   <!-- Booking Content -->
   <div *ngIf="!loading && !error && business" class="booking-content">
     <!-- Progress Steps -->
-    <div class="progress-steps">
-      <div class="step" [class.active]="stepIndex >= 0" [class.completed]="stepIndex > 0">
-        <span class="step-number">1</span>
+    <nav class="progress-steps" aria-label="Booking progress">
+      <div class="step" [class.active]="stepIndex >= 0" [class.completed]="stepIndex > 0" [attr.aria-current]="stepIndex === 0 ? 'step' : null">
+        <span class="step-number" aria-hidden="true">1</span>
         <span class="step-label">Service</span>
       </div>
-      <div class="step-line" [class.active]="stepIndex > 0"></div>
-      <div class="step" [class.active]="stepIndex >= 1" [class.completed]="stepIndex > 1">
-        <span class="step-number">2</span>
+      <div class="step-line" [class.active]="stepIndex > 0" aria-hidden="true"></div>
+      <div class="step" [class.active]="stepIndex >= 1" [class.completed]="stepIndex > 1" [attr.aria-current]="stepIndex === 1 ? 'step' : null">
+        <span class="step-number" aria-hidden="true">2</span>
         <span class="step-label">Date</span>
       </div>
-      <div class="step-line" [class.active]="stepIndex > 1"></div>
-      <div class="step" [class.active]="stepIndex >= 2" [class.completed]="stepIndex > 2">
-        <span class="step-number">3</span>
+      <div class="step-line" [class.active]="stepIndex > 1" aria-hidden="true"></div>
+      <div class="step" [class.active]="stepIndex >= 2" [class.completed]="stepIndex > 2" [attr.aria-current]="stepIndex === 2 ? 'step' : null">
+        <span class="step-number" aria-hidden="true">3</span>
         <span class="step-label">Time</span>
       </div>
-      <div class="step-line" [class.active]="stepIndex > 2"></div>
-      <div class="step" [class.active]="stepIndex >= 3" [class.completed]="stepIndex > 3">
-        <span class="step-number">4</span>
+      <div class="step-line" [class.active]="stepIndex > 2" aria-hidden="true"></div>
+      <div class="step" [class.active]="stepIndex >= 3" [class.completed]="stepIndex > 3" [attr.aria-current]="stepIndex === 3 ? 'step' : null">
+        <span class="step-number" aria-hidden="true">4</span>
         <span class="step-label">Details</span>
       </div>
-    </div>
+    </nav>
 
     <!-- Step 1: Select Service -->
     <div *ngIf="currentStep === 'service'" class="step-content">
       <h2>Select a Service</h2>
-      <div class="services-grid">
-        <div
+      <div class="services-grid" role="list">
+        <button
           *ngFor="let service of business.services"
           class="service-card"
+          type="button"
+          role="listitem"
           (click)="selectService(service)"
+          [attr.aria-label]="service.name + (service.durationMinutes ? ', ' + service.durationMinutes + ' minutes' : '') + (service.price ? ', $' + service.price : '')"
         >
-          <div class="service-color" [style.background-color]="service.color || '#4a90d9'"></div>
+          <div class="service-color" [style.background-color]="service.color || '#4a90d9'" aria-hidden="true"></div>
           <div class="service-info">
             <h3>{{ service.name }}</h3>
             <p *ngIf="service.description">{{ service.description }}</p>
@@ -60,7 +63,7 @@
               <span *ngIf="service.price" class="price">${{ service.price }}</span>
             </div>
           </div>
-        </div>
+        </button>
       </div>
     </div>
 
@@ -69,11 +72,13 @@
       <button class="back-btn" (click)="goBackToService()">← Back</button>
       <h2>Select a Date</h2>
       <div class="date-scroll-container">
-        <div class="date-list">
+        <div class="date-list" role="listbox" aria-label="Available dates">
           <button
             *ngFor="let date of availableDates"
             class="date-btn"
+            role="option"
             [class.selected]="selectedDate.toDateString() === date.toDateString()"
+            [attr.aria-selected]="selectedDate.toDateString() === date.toDateString()"
             (click)="selectDate(date)"
           >
             <span class="day-name">{{ date | date:'EEE' }}</span>
@@ -90,8 +95,8 @@
       <h2>Select a Time</h2>
       <p class="selected-date">{{ formatDate(selectedDate) }}</p>
 
-      <div *ngIf="loadingSlots" class="loading-state">
-        <div class="spinner"></div>
+      <div *ngIf="loadingSlots" class="loading-state" role="status">
+        <div class="spinner" aria-hidden="true"></div>
         <p>Loading available times...</p>
       </div>
 
@@ -100,10 +105,11 @@
         <button (click)="goBackToDate()">Choose Another Date</button>
       </div>
 
-      <div *ngIf="!loadingSlots && slots.length > 0" class="slots-grid">
+      <div *ngIf="!loadingSlots && slots.length > 0" class="slots-grid" role="listbox" aria-label="Available time slots">
         <button
           *ngFor="let slot of slots"
           class="slot-btn"
+          role="option"
           (click)="selectSlot(slot)"
         >
           {{ formatTime(slot.startTime) }}
@@ -116,7 +122,7 @@
       <button class="back-btn" (click)="goBackToTime()">← Back</button>
       <h2>Your Information</h2>
 
-      <div class="booking-summary">
+      <div class="booking-summary" role="region" aria-label="Booking summary">
         <p><strong>Service:</strong> {{ selectedService?.name }}</p>
         <p><strong>Date:</strong> {{ formatDate(selectedDate) }}</p>
         <p><strong>Time:</strong> {{ selectedSlot ? formatTime(selectedSlot.startTime) : '' }}</p>
@@ -133,8 +139,10 @@
             name="clientName"
             required
             placeholder="Your full name"
+            [attr.aria-invalid]="nameError ? 'true' : null"
+            [attr.aria-describedby]="nameError ? 'name-error' : null"
           />
-          <span class="error-message" *ngIf="nameError">{{ nameError }}</span>
+          <span class="error-message" id="name-error" role="alert" *ngIf="nameError">{{ nameError }}</span>
         </div>
 
         <div class="form-group">
@@ -146,8 +154,10 @@
             name="clientEmail"
             required
             placeholder="your@email.com"
+            [attr.aria-invalid]="emailError ? 'true' : null"
+            [attr.aria-describedby]="emailError ? 'email-error' : null"
           />
-          <span class="error-message" *ngIf="emailError">{{ emailError }}</span>
+          <span class="error-message" id="email-error" role="alert" *ngIf="emailError">{{ emailError }}</span>
         </div>
 
         <div class="form-group">
@@ -183,8 +193,8 @@
     </div>
 
     <!-- Step 5: Confirmation -->
-    <div *ngIf="currentStep === 'confirmation'" class="step-content confirmation">
-      <div class="success-icon">✓</div>
+    <div *ngIf="currentStep === 'confirmation'" class="step-content confirmation" role="status">
+      <div class="success-icon" aria-hidden="true">✓</div>
       <h2>Booking Confirmed!</h2>
       <p class="confirmation-message">{{ bookingResponse?.message }}</p>
 
@@ -201,4 +211,4 @@
       </div>
     </div>
   </div>
-</div>
+</main>

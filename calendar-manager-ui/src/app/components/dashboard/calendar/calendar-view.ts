@@ -120,7 +120,7 @@ export class CalendarViewComponent {
     this.daySelected.emit(day.date);
   }
 
-  onEventClick(event: CalendarEvent, event_: MouseEvent): void {
+  onEventClick(event: CalendarEvent, event_: Event): void {
     event_.stopPropagation();
     this.eventSelected.emit(event);
   }
@@ -143,5 +143,19 @@ export class CalendarViewComponent {
       minute: '2-digit',
       hour12: true,
     });
+  }
+
+  getDayAriaLabel(day: CalendarDay): string {
+    const dateStr = day.date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    const parts = [dateStr];
+    if (day.isToday) parts.push('today');
+    if (day.events.length === 1) parts.push('1 event');
+    else if (day.events.length > 1) parts.push(`${day.events.length} events`);
+    return parts.join(', ');
   }
 }

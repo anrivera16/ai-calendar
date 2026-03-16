@@ -64,9 +64,9 @@
   </div>
 
   <!-- Main Content - Seamless Split Layout -->
-  <main class="dashboard-main">
+  <main id="main-content" class="dashboard-main">
     <!-- Calendar Panel (Main Canvas - 65% on desktop) -->
-    <section class="calendar-section" [class.mobile-hidden]="showMobileToggle() && activePanel() !== 'calendar'">
+    <section class="calendar-section" aria-label="Calendar" [class.mobile-hidden]="showMobileToggle() && activePanel() !== 'calendar'">
       <app-calendar-view
         [events]="events() || []"
         [highlightedEventId]="highlightedEventId()"
@@ -77,7 +77,7 @@
     </section>
 
     <!-- Chat Panel (Sidebar - 35% on desktop) -->
-    <section class="chat-section" [class.mobile-hidden]="showMobileToggle() && activePanel() !== 'chat'">
+    <section class="chat-section" aria-label="AI Assistant" [class.mobile-hidden]="showMobileToggle() && activePanel() !== 'chat'">
       <app-chat-panel
         [messages]="messages() || []"
         [processing]="chatProcessing() || false"

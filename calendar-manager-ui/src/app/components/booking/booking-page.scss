@@ -2,7 +2,6 @@
   max-width: 800px;
   margin: 0 auto;
   padding: 2rem;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .booking-header {
@@ -12,11 +11,11 @@
   h1 {
     font-size: 2rem;
     margin-bottom: 0.5rem;
-    color: #333;
+    color: var(--text-primary);
   }
 
   p {
-    color: #666;
+    color: var(--text-secondary);
     font-size: 1.1rem;
   }
 }
@@ -30,32 +29,28 @@
   .spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid #f3f3f3;
-    border-top: 3px solid #4a90d9;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
     margin: 0 auto 1rem;
   }
 
   p {
-    color: #666;
+    color: var(--text-secondary);
   }
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
 }
 
 .error-state {
   button {
     margin-top: 1rem;
     padding: 0.75rem 1.5rem;
-    background: #4a90d9;
-    color: white;
+    background: var(--accent-blue);
+    color: var(--bg-surface);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-md);
     cursor: pointer;
+    transition: background var(--transition-fast);
+
+    &:hover {
+      background: var(--accent-blue-hover);
+    }
   }
 }
 
@@ -75,15 +70,16 @@
   align-items: center;
   gap: 0.25rem;
   opacity: 0.5;
-  transition: opacity 0.3s;
+  transition: opacity var(--transition-normal);
 
   &.active {
     opacity: 1;
   }
 
   &.completed .step-number {
-    background: #4caf50;
-    border-color: #4caf50;
+    background: var(--success);
+    border-color: var(--success);
+    color: var(--bg-surface);
   }
 }
 
@@ -91,54 +87,55 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: 2px solid #ddd;
+  border: 2px solid var(--border-focus);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 600;
   font-size: 0.875rem;
-  background: white;
-  transition: all 0.3s;
+  background: var(--bg-surface);
+  transition: all var(--transition-normal);
 }
 
 .step-label {
   font-size: 0.75rem;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .step-line {
   width: 40px;
   height: 2px;
-  background: #ddd;
-  transition: background 0.3s;
+  background: var(--border-focus);
+  transition: background var(--transition-normal);
 
   &.active {
-    background: #4a90d9;
+    background: var(--accent-blue);
   }
 }
 
 // Step Content
 .step-content {
-  background: white;
-  border-radius: 8px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
   padding: 2rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
 
   h2 {
     font-size: 1.5rem;
     margin-bottom: 1.5rem;
-    color: #333;
+    color: var(--text-primary);
   }
 }
 
 .back-btn {
   background: none;
   border: none;
-  color: #4a90d9;
+  color: var(--accent-blue);
   cursor: pointer;
   font-size: 1rem;
   margin-bottom: 1rem;
   padding: 0;
+  transition: color var(--transition-fast);
 
   &:hover {
     text-decoration: underline;
@@ -154,15 +151,26 @@
 
 .service-card {
   display: flex;
-  border: 2px solid #eee;
-  border-radius: 8px;
+  border: 2px solid var(--border-default);
+  border-radius: var(--radius-md);
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
+  background: var(--bg-surface);
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  width: 100%;
 
   &:hover {
-    border-color: #4a90d9;
-    box-shadow: 0 4px 12px rgba(74, 144, 217, 0.2);
+    border-color: var(--accent-blue);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
   }
 }
 
@@ -178,13 +186,13 @@
   h3 {
     margin: 0 0 0.5rem;
     font-size: 1.1rem;
-    color: #333;
+    color: var(--text-primary);
   }
 
   p {
     margin: 0 0 0.75rem;
     font-size: 0.875rem;
-    color: #666;
+    color: var(--text-secondary);
   }
 }
 
@@ -192,11 +200,11 @@
   display: flex;
   justify-content: space-between;
   font-size: 0.875rem;
-  color: #888;
+  color: var(--text-tertiary);
 
   .price {
     font-weight: 600;
-    color: #4caf50;
+    color: var(--success);
   }
 }
 
@@ -217,51 +225,51 @@
   flex-direction: column;
   align-items: center;
   padding: 0.75rem 1rem;
-  border: 2px solid #eee;
-  border-radius: 8px;
-  background: white;
+  border: 2px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
   min-width: 70px;
 
   &:hover {
-    border-color: #4a90d9;
+    border-color: var(--accent-blue);
   }
 
   &.selected {
-    background: #4a90d9;
-    border-color: #4a90d9;
-    color: white;
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: var(--bg-surface);
 
     .day-name,
     .day-number,
     .month-name {
-      color: white;
+      color: var(--bg-surface);
     }
   }
 
   .day-name {
     font-size: 0.75rem;
-    color: #888;
+    color: var(--text-tertiary);
     text-transform: uppercase;
   }
 
   .day-number {
     font-size: 1.5rem;
     font-weight: 600;
-    color: #333;
+    color: var(--text-primary);
   }
 
   .month-name {
     font-size: 0.75rem;
-    color: #888;
+    color: var(--text-tertiary);
   }
 }
 
 // Time Slots
 .selected-date {
   font-size: 1.1rem;
-  color: #666;
+  color: var(--text-secondary);
   margin-bottom: 1rem;
 }
 
@@ -273,45 +281,50 @@
 
 .slot-btn {
   padding: 0.75rem;
-  border: 2px solid #eee;
-  border-radius: 4px;
-  background: white;
+  border: 2px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
   cursor: pointer;
   font-size: 0.9rem;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
 
   &:hover {
-    border-color: #4a90d9;
-    background: #f5f9ff;
+    border-color: var(--accent-blue);
+    background: var(--accent-blue-light);
   }
 }
 
 .no-slots {
   text-align: center;
   padding: 2rem;
-  color: #666;
+  color: var(--text-secondary);
 
   button {
     margin-top: 1rem;
     padding: 0.75rem 1.5rem;
-    background: #4a90d9;
-    color: white;
+    background: var(--accent-blue);
+    color: var(--bg-surface);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
+    transition: background var(--transition-fast);
+
+    &:hover {
+      background: var(--accent-blue-hover);
+    }
   }
 }
 
 // Client Form
 .booking-summary {
-  background: #f9f9f9;
+  background: var(--bg-primary);
   padding: 1rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin-bottom: 1.5rem;
 
   p {
     margin: 0.25rem 0;
-    color: #666;
+    color: var(--text-secondary);
   }
 }
 
@@ -323,26 +336,44 @@
       display: block;
       margin-bottom: 0.5rem;
       font-weight: 500;
-      color: #333;
+      color: var(--text-primary);
     }
 
     input,
     textarea {
       width: 100%;
       padding: 0.75rem;
-      border: 2px solid #eee;
-      border-radius: 4px;
+      border: 2px solid var(--border-default);
+      border-radius: var(--radius-sm);
       font-size: 1rem;
-      transition: border-color 0.2s;
+      transition: border-color var(--transition-fast);
 
       &:focus {
+        border-color: var(--accent-blue);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--accent-blue);
+        outline-offset: 2px;
+      }
+
+      &:focus:not(:focus-visible) {
         outline: none;
-        border-color: #4a90d9;
       }
     }
 
     textarea {
       resize: vertical;
+    }
+
+    .error-message {
+      display: block;
+      color: var(--error-text);
+      font-size: 0.875rem;
+      margin-top: 0.25rem;
+      background: none;
+      border: none;
+      padding: 0;
     }
   }
 }
@@ -350,21 +381,21 @@
 .submit-btn {
   width: 100%;
   padding: 1rem;
-  background: #4a90d9;
-  color: white;
+  background: var(--accent-blue);
+  color: var(--bg-surface);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 1.1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--transition-fast);
 
   &:hover:not(:disabled) {
-    background: #357abd;
+    background: var(--accent-blue-hover);
   }
 
   &:disabled {
-    background: #ccc;
+    background: var(--border-focus);
     cursor: not-allowed;
   }
 }
@@ -376,8 +407,8 @@
   .success-icon {
     width: 80px;
     height: 80px;
-    background: #4caf50;
-    color: white;
+    background: var(--success);
+    color: var(--bg-surface);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -388,35 +419,36 @@
 
   .confirmation-message {
     font-size: 1.1rem;
-    color: #666;
+    color: var(--text-secondary);
     margin-bottom: 1.5rem;
   }
 
   .confirmation-details {
-    background: #f9f9f9;
+    background: var(--bg-primary);
     padding: 1.5rem;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     margin-bottom: 1.5rem;
     text-align: left;
 
     p {
       margin: 0.5rem 0;
-      color: #666;
+      color: var(--text-secondary);
     }
   }
 
   .confirmation-actions {
     .primary-btn {
       padding: 0.75rem 2rem;
-      background: #4a90d9;
-      color: white;
+      background: var(--accent-blue);
+      color: var(--bg-surface);
       border: none;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       font-size: 1rem;
       cursor: pointer;
+      transition: background var(--transition-fast);
 
       &:hover {
-        background: #357abd;
+        background: var(--accent-blue-hover);
       }
     }
   }

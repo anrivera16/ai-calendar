@@ -110,7 +110,7 @@
   &.danger:hover:not(:disabled) {
     color: var(--error);
     border-color: var(--error);
-    background: #FEF2F2;
+    background: var(--error-bg);
   }
 }
 
